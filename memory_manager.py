@@ -5,7 +5,7 @@ import json
 class MemoryManager:
     def __init__(self):
         self.sessions: Dict[str, List[dict]] = {}
-        self.user_stats: Dict[str, dict] = {}  # Track user consistency stats
+        self.user_stats: Dict[str, dict] = {}
     
     def add_message(self, user_id: str, role: str, content: str):
         if user_id not in self.sessions:
@@ -17,12 +17,24 @@ class MemoryManager:
             "timestamp": datetime.now().isoformat()
         })
         
-        # Keep more context - last 20 messages (10 turns) for better Islamic guidance
+        # Keep more context - last 20 messages (10 turns)
         if len(self.sessions[user_id]) > 20:
             self.sessions[user_id] = self.sessions[user_id][-20:]
         
         # Update user stats
         self._update_user_stats(user_id, role, content)
+    
+    def get_last_question(self, user_id: str) -> Optional[str]:
+        """Get the user's last question/message"""
+        if user_id not in self.sessions:
+            return None
+        
+        # Find the last user message
+        for msg in reversed(self.sessions[user_id]):
+            if msg['role'] == 'user':
+                return msg['content']
+        
+        return None
     
     def _update_user_stats(self, user_id: str, role: str, content: str):
         """Track user patterns for personalized Islamic guidance"""
@@ -76,7 +88,6 @@ class MemoryManager:
         if user_id not in self.sessions:
             return ""
         
-        # Get recent messages
         recent = self.sessions[user_id][-max_messages:]
         context = "\n".join([
             f"{'User' if msg['role'] == 'user' else 'Assistant'}: {msg['content']}"
@@ -122,8 +133,8 @@ class MemoryManager:
         advice = self._generate_advice(user_id, consistency, stats)
         
         return {
-            "struggles": struggles[-3:],  # Last 3 struggles
-            "achievements": achievements[-3:],  # Last 3 achievements
+            "struggles": struggles[-3:],
+            "achievements": achievements[-3:],
             "consistency": consistency,
             "topics": list(stats.get("topics", set()))[:5],
             "message_count": len(self.sessions[user_id]),
@@ -134,19 +145,17 @@ class MemoryManager:
     def _generate_advice(self, user_id: str, consistency: str, stats: dict) -> str:
         """Generate personalized Islamic advice based on user patterns"""
         if consistency == "struggling":
-            return "🤲 Don't be hard on yourself! Start with just ONE prayer on time today. Allah loves small consistent deeds. SiratSync's Habit Tracker can help you build slowly."
-        
+            return "🤲 Don't be hard on yourself! Start with just ONE prayer on time today. Allah loves small consistent deeds."
         elif consistency == "high":
             topics = stats.get("topics", set())
             if 'quran' in topics:
-                return "🌟 MashaAllah! Your consistency is inspiring. Consider adding 5 minutes of Quran with translation using SiratSync's Quran ."
+                return "🌟 MashaAllah! Your consistency is inspiring. Consider adding 5 minutes of Quran with translation."
             elif 'dua' in topics:
-                return "💫 Beautiful consistency! Try learning morning & evening adhkar from the Duas section to increase your blessings."
+                return "💫 Beautiful consistency! Try learning morning & evening adhkar to increase your blessings."
             else:
-                return "🎯 MashaAllah! Keep going. Try exploring SiratSync's Community feature to share your journey and inspire others."
-        
-        else:  # medium or unknown
-            return "📌 You're on the right track! Remember: 'The most beloved deeds to Allah are those done consistently, even if small.' Set a small daily goal in the Habit Tracker today."
+                return "🎯 MashaAllah! Keep going. Try exploring the Community feature to share your journey."
+        else:
+            return "📌 You're on the right track! Set a small daily goal in the Habit Tracker today."
     
     def get_topic_focus(self, user_id: str) -> Optional[str]:
         """Get the main topic the user has been asking about"""
@@ -182,13 +191,13 @@ class MemoryManager:
         profile = self.get_user_profile(user_id)
         
         if profile["consistency"] == "struggling":
-            return "💪 You've got this! Every journey starts with a single step. Allah sees your effort, and that's what matters most."
+            return "💪 You've got this! Every journey starts with a single step. Allah sees your effort."
         elif profile["consistency"] == "high" and profile.get("achievements"):
             return f"🎉 MashaAllah! You're doing amazing. {profile['achievements'][0][:50]}..."
         elif profile["consistency"] == "medium":
-            return "📈 You're making progress! Keep taking small steps. SiratSync is here to support you every day."
+            return "📈 You're making progress! Keep taking small steps. SiratSync is here to support you."
         else:
-            return "🤲 Welcome to SiratSync! I'm here to help you build beautiful Islamic habits. What would you like to learn about today?"
+            return "🤲 Welcome to SiratSync! I'm here to help you build beautiful Islamic habits."
     
     def clear_session(self, user_id: str):
         """Clear user session data (privacy feature)"""
