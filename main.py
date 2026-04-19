@@ -14,6 +14,8 @@ from intent_detector import IntentDetector
 from rag_knowledge import RAGKnowledge
 from memory_manager import MemoryManager
 from actions import suggest_actions, get_motivational_quote, get_quick_reply_suggestions
+from cache import cache
+import json as json_module
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +48,7 @@ class ChatRequest(BaseModel):
     message: str
     user_name: Optional[str] = None
     app_version: Optional[str] = "2.0"
+    context: Optional[str] = None  
 
 class ChatResponse(BaseModel):
     reply: str
@@ -163,6 +166,14 @@ async def startup_event():
     
     logger.info("✅ SiratSync API started successfully")
     logger.info(f"📚 Knowledge base categories: {rag.list_categories()}")
+    
+    # Start keep-alive for Render
+    if os.environ.get("RENDER", False) or os.environ.get("KEEP_ALIVE", False):
+        try:
+            from keep_alive import keep_render_alive
+            keep_render_alive()
+        except ImportError:
+            logger.warning("⚠️ keep_alive module not found")
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -213,13 +224,22 @@ Which feature would you like to explore first?"""
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        logger.info(f"📨 Chat request from user {request.user_id}: {request.message[:50]}...")
+        logger.info(f"📨 Chat request from user {request.user_id}")
+        
+        # 0. CHECK CACHE FIRST (for instant responses)
+        cached_response = cache.get(request.message, request.user_id)
+        if cached_response:
+            logger.info(f"⚡ Cache hit! Stats: {cache.stats}")
+            cached_data = json_module.loads(cached_response)
+            return ChatResponse(**cached_data)
         
         # 1. Store user message
         memory.add_message(request.user_id, "user", request.message)
         
         # 2. Get context for follow-up detection
-        context = memory.get_context(request.user_id, max_messages=6)
+        # Use client-provided context if available, otherwise use server memory
+        server_context = memory.get_context(request.user_id, max_messages=6)
+        conversation_context = request.context if request.context else server_context
         last_question = memory.get_last_question(request.user_id)
         
         # 3. Detect intent (enhanced with more details)
@@ -247,7 +267,7 @@ async def chat(request: ChatRequest):
                 primary_intent = "quran"
                 sub_intent = "learn_more"
                 logger.info(f"🔄 Override: Confirmation to quran question detected")
-            elif context and ('features' in context.lower() or 'learn more' in context.lower()):
+            elif conversation_context and ('features' in conversation_context.lower() or 'learn more' in conversation_context.lower()):
                 primary_intent = "app_features_inquiry"
                 logger.info(f"🔄 Override: Context shows features inquiry")
         
@@ -269,7 +289,7 @@ async def chat(request: ChatRequest):
             primary_intent, 
             sub_intent, 
             user_profile,
-            context=context,
+            context=conversation_context,  # Use combined context
             last_question=last_question
         )
         
@@ -280,14 +300,14 @@ async def chat(request: ChatRequest):
             # 8. Special handling for app features inquiry
             if primary_intent == "app_features_inquiry" or (
                 message_lower in confirmation_words and 
-                context and 'features' in context.lower()
+                conversation_context and 'features' in conversation_context.lower()
             ):
                 reply = get_features_response()
                 logger.info("📱 Using features response template")
             else:
-                # 9. Generate response with LLM
+                # 9. Generate response with LLM using combined context
                 prompt = SYSTEM_PROMPT.format(
-                    context=context if context else "(No previous conversation)",
+                    context=conversation_context if conversation_context else "(No previous conversation)",
                     user_profile=json.dumps(user_profile, indent=2),
                     knowledge=knowledge if knowledge else "(No specific knowledge retrieved)",
                     question=request.message
@@ -303,14 +323,14 @@ async def chat(request: ChatRequest):
                         {"role": "user", "content": request.message}
                     ],
                     temperature=temperature,
-                    max_tokens=250 if urgency == "high" else 350  # Shorter responses for urgent issues
+                    max_tokens=200 if urgency == "high" else 300
                 )
                 
                 reply = response.choices[0].message.content.strip()
                 
-                # Post-process reply (ensure it's not too long)
-                if len(reply) > 500 and urgency != "high":
-                    reply = reply[:500] + "..."
+                # Post-process reply
+                if len(reply) > 1000 and urgency != "high":
+                    reply = reply[:1000] + "..."
                 
                 logger.info(f"🤖 LLM response generated ({len(reply)} chars)")
         
@@ -325,7 +345,7 @@ async def chat(request: ChatRequest):
         # 11. Get quick reply suggestions for UI buttons
         suggestions = get_quick_reply_suggestions(primary_intent, sub_intent)
         
-        # 12. Get motivational quote if user is struggling or consistent
+        # 12. Get motivational quote
         motivational_quote = None
         if primary_intent == "struggling" or user_profile.get("consistency") == "struggling":
             motivational_quote = get_motivational_quote("struggling")
@@ -337,17 +357,23 @@ async def chat(request: ChatRequest):
         # 13. Store assistant response
         memory.add_message(request.user_id, "assistant", reply)
         
-        # 14. Return enhanced response
-        return ChatResponse(
-            reply=reply,
-            intent=primary_intent,
-            sub_intent=sub_intent,
-            sentiment=sentiment,
-            actions=actions,
-            suggestions=suggestions[:4],  # Max 4 suggestions
-            motivational_quote=motivational_quote,
-            timestamp=datetime.now().isoformat()
-        )
+        # 14. Build response data
+        response_data = {
+            "reply": reply,
+            "intent": primary_intent,
+            "sub_intent": sub_intent,
+            "sentiment": sentiment,
+            "actions": actions,
+            "suggestions": suggestions[:4],
+            "motivational_quote": motivational_quote,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # 15. Cache response for common questions (1 hour TTL)
+        cache.set(request.message, request.user_id, json_module.dumps(response_data), ttl_minutes=60)
+        
+        # 16. Return response
+        return ChatResponse(**response_data)
         
     except Exception as e:
         logger.error(f"❌ Error in chat endpoint: {str(e)}")
@@ -362,7 +388,6 @@ async def chat(request: ChatRequest):
             motivational_quote=None,
             timestamp=datetime.now().isoformat()
         )
-
 
 def get_quick_response(message: str, intent: str, sub_intent: str, user_profile: dict, context: str = "", last_question: str = "") -> Optional[str]:
     """Get quick responses for common patterns without calling LLM"""
@@ -478,6 +503,7 @@ What would you like to explore?"""
 
 
 @app.get("/health")
+@app.head("/health")
 async def health():
     return {
         "status": "healthy",

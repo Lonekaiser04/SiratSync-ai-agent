@@ -4,3 +4,6 @@ groq==0.4.2
 firebase-admin==6.4.0
 python-dotenv==1.0.0
 httpx==0.25.1
+redis==5.0.1
+hiredis==2.2.3
+requests==2.31.0

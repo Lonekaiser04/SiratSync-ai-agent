@@ -29,8 +29,7 @@ class RAGKnowledge:
                             if isinstance(value, str):
                                 search_text += f" {value}"
                             elif isinstance(value, list):
-                                search_text += f" {' '.join(value)}"
-                        
+                                search_text += f" {' '.join(str(v) if not isinstance(v, dict) else ' '.join(str(x) for x in v.values()) for v in value)}"
                         index.append({
                             'category': category,
                             'item': item,
@@ -63,6 +62,24 @@ class RAGKnowledge:
     
     def retrieve(self, query: str, top_k=4) -> str:
         query_lower = query.lower()
+        
+        # FAST PATH 1: Try direct answer first
+        direct = self.get_direct_answer(query)
+        if direct:
+            return direct
+        
+        # FAST PATH 2: Check FAQs quickly
+        for faq in self.knowledge.get("faqs", []):
+            faq_question = faq.get("question", "").lower()
+            if faq_question in query_lower or query_lower in faq_question:
+                return f"❓ {faq['answer']}"
+        
+        # FAST PATH 3: Check new FAQs
+        for faq in self.knowledge.get("faqs_new", []):
+            faq_question = faq.get("question", "").lower()
+            if faq_question in query_lower or query_lower in faq_question:
+                return f"❓ {faq['answer']}"
+        
         query_words = set(query_lower.split())
         scored_chunks = []
         
