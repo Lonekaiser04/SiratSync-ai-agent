@@ -149,6 +149,20 @@ async def chat(request: ChatRequest):
 
         memory.add_message(request.user_id, "assistant", reply)
 
+        # ✅ Build sources
+        is_quran_topic = rag_service._is_quran_topic_query(message_lower)
+        used_rag = bool(knowledge and knowledge != "(No specific knowledge retrieved)")
+        verses_shown = is_quran_topic  # if quran topic, verses were shown
+
+        sources = _build_sources(
+            primary_intent=primary_intent,
+            knowledge=knowledge,
+            reply=reply,
+            used_rag=used_rag,
+            is_quran_topic=is_quran_topic,
+            verses_shown=verses_shown,
+        )
+
         response_data = {
             "reply":              reply,
             "intent":             primary_intent,
@@ -158,7 +172,19 @@ async def chat(request: ChatRequest):
             "suggestions":        suggestions[:4],
             "motivational_quote": motivational_quote,
             "timestamp":          datetime.now().isoformat(),
+            "sources":            sources,   # ✅ NEW
         }
+
+        # response_data = {
+        #     "reply":              reply,
+        #     "intent":             primary_intent,
+        #     "sub_intent":         sub_intent,
+        #     "sentiment":          sentiment,
+        #     "actions":            actions,
+        #     "suggestions":        suggestions[:4],
+        #     "motivational_quote": motivational_quote,
+        #     "timestamp":          datetime.now().isoformat(),
+        # }
 
         cache.set(request.message, request.user_id, json_module.dumps(response_data), ttl_minutes=60)
 
@@ -179,3 +205,30 @@ async def chat(request: ChatRequest):
             motivational_quote=None,
             timestamp=datetime.now().isoformat(),
         )
+
+def _build_sources(primary_intent: str, knowledge: str, reply: str, used_rag: bool, is_quran_topic: bool, verses_shown: bool) -> list:
+    sources = []
+
+    if is_quran_topic and verses_shown:
+        # Quran topic — verses were shown verbatim
+        sources.append({"type": "quran", "label": "Quran — Arabic", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Sahih International (English)", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Urdu Translation", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Kashmiri Translation", "reference": None})
+        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Explanation by Groq LLaMA 3.1"})
+
+    elif primary_intent in ["quran", "quran_verse"] and used_rag:
+        # Specific verse lookup
+        sources.append({"type": "quran", "label": "Quran — Arabic", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Sahih International (English)", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Urdu Translation", "reference": None})
+        sources.append({"type": "quran", "label": "Quran — Kashmiri Translation", "reference": None})
+
+    elif used_rag and knowledge and knowledge != "(No specific knowledge retrieved)":
+        sources.append({"type": "knowledge_base", "label": "SiratSync Knowledge Base", "detail": "Islamic content database"})
+        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Groq LLaMA 3.1"})
+
+    else:
+        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Groq LLaMA 3.1"})
+
+    return sources
