@@ -265,6 +265,18 @@ class RAGKnowledge:
         if followup:
             return followup
 
+        # ✅ FIX 1: Handle "surah <name> verse <num>" pattern
+        snv_name = re.search(
+            r"(?:surah|surat)\s+([a-z][\w\s\-]{1,30}?)\s+(?:verse|ayat|ayah)\s+(\d{1,3})\b",
+            ql,
+        )
+        if snv_name:
+            candidate = _SURAH_SPELLING_MAP.get(snv_name.group(1).strip(), snv_name.group(1).strip())
+            surah = self.get_surah_by_name(candidate)
+            if surah:
+                self._update_surah_context(surah)
+                return self._handle_verse_reference_query(surah["id"], int(snv_name.group(2)))
+
         verse_ref = self._extract_verse_ref(ql)
         if verse_ref:
             sid, vid = verse_ref
@@ -1301,6 +1313,45 @@ class RAGKnowledge:
 
         parts.append("\n🤲 _For complete tafsir, open the full surah in the SiratSync app._")
         return "\n".join(parts)
+    
+    def get_topic_verses_formatted(self, query: str) -> tuple[str, str]:
+        """
+        Returns (verses_block, raw_context_for_llm) for quran topic queries.
+        verses_block   — clean formatted verses to show verbatim to the user
+        raw_context    — plain English context to pass to LLM for explanation only
+        """
+        result  = self.search_quran_by_topic(query)
+        verses  = result.get("verses", [])
+        surahs  = result.get("surahs", [])
+
+        if not verses and not surahs:
+            return "", ""
+
+        # ── Part 1: Verbatim verse block shown to user ──────────────────────
+        verse_lines = ["📖 **Related Verses:**\n"]
+        for v in verses[:4]:
+            ref = f"{v['surah_name']} ({v['surah_translation']}) — {v['surah_id']}:{v['verse_id']}"
+            verse_lines.append(f"**{ref}**")
+            if v.get("arabic"):
+                verse_lines.append(f"{v['arabic']}")
+            verse_lines.append(f"**English:** {v['english']}")
+            if v.get("urdu"):
+                verse_lines.append(f"**Urdu:** {v['urdu']}")
+            if v.get("kashmiri"):
+                verse_lines.append(f"**Kashmiri:** {v['kashmiri']}")
+            verse_lines.append("")  # blank line between verses
+
+        verses_block = "\n".join(verse_lines)
+
+        # ── Part 2: Plain context for LLM explanation ────────────────────────
+        ctx_lines = ["Quranic verses on this topic:"]
+        for v in verses[:4]:
+            ctx_lines.append(
+                f"{v['surah_name']} {v['surah_id']}:{v['verse_id']} — {v['english']}"
+            )
+        raw_context = "\n".join(ctx_lines)
+
+        return verses_block, raw_context
 
     @staticmethod
     def _fallback_response() -> str:

@@ -19,7 +19,7 @@ llm = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 @router.post("/summarize", response_model=SummarizeResponse)
 async def summarize_post(request: SummarizeRequest):
     try:
-        logger.info(f"📝 Summarize request from {request.user_id}")
+        logger.info(f"Summarize request from {request.user_id}")
 
         content = request.post_content.strip()
 
@@ -56,9 +56,9 @@ async def summarize_post(request: SummarizeRequest):
 
         cache.set(cache_key, request.user_id, json_module.dumps(result.dict()), ttl_minutes=1440)
 
-        logger.info(f"✅ Summary: {result.summary_length} chars (from {result.original_length})")
+        logger.info(f" Summary: {result.summary_length} chars (from {result.original_length})")
         return result
 
     except Exception as e:
-        logger.error(f"❌ Summarize error: {e}", exc_info=True)
+        logger.error(f"Summarize error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")

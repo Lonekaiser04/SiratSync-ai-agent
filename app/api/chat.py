@@ -24,6 +24,7 @@ router = APIRouter()
 
 llm = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
@@ -80,6 +81,57 @@ async def chat(request: ChatRequest):
         if quick_reply:
             reply = quick_reply
             logger.info("⚡ Quick response used")
+
+        # ✅ NEW: Quran topic query — show exact verses + LLM explanation below
+        elif rag_service._is_quran_topic_query(message_lower):
+            verses_block, llm_context = rag_service.get_topic_verses_formatted(request.message)
+
+            if verses_block:
+                # Ask LLM only for a brief explanation, not to repeat verses
+                explanation_prompt = (
+                    f"The user asked: \"{request.message}\"\n\n"
+                    f"These Quranic verses have already been shown to them verbatim:\n"
+                    f"{llm_context}\n\n"
+                    f"Write a SHORT explanation (3-5 sentences max) that:\n"
+                    f"- Explains the meaning and context of these verses\n"
+                    f"- Connects them to the user's question\n"
+                    f"- Does NOT repeat the verses or translations\n"
+                    f"- Is warm, Islamic in tone, ends with encouragement\n"
+                    f"Start directly with the explanation, no preamble."
+                )
+
+                llm_response = llm.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": explanation_prompt},
+                        {"role": "user",   "content": request.message},
+                    ],
+                    temperature=0.4,
+                    max_tokens=300,
+                )
+                explanation = llm_response.choices[0].message.content.strip()
+
+                reply = f"{verses_block}\n---\n\n💡 **Explanation:**\n{explanation}"
+                logger.info("📖 Quran topic: verses + LLM explanation combined")
+            else:
+                # No verses found — fall through to normal LLM
+                prompt = SYSTEM_PROMPT.format(
+                    context      = conversation_context or "(No previous conversation)",
+                    user_profile = json_module.dumps(user_profile, indent=2),
+                    knowledge    = knowledge or "(No specific knowledge retrieved)",
+                    question     = request.message,
+                )
+                llm_response = llm.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user",   "content": request.message},
+                    ],
+                    temperature=0.5,
+                    max_tokens=500,
+                )
+                reply = llm_response.choices[0].message.content.strip()
+
         else:
             prompt = SYSTEM_PROMPT.format(
                 context      = conversation_context or "(No previous conversation)",
@@ -156,3 +208,136 @@ async def chat(request: ChatRequest):
             motivational_quote=None,
             timestamp=datetime.now().isoformat(),
         )
+
+# @router.post("/chat", response_model=ChatResponse)
+# async def chat(request: ChatRequest):
+#     try:
+#         logger.info(f"📨 Chat from user {request.user_id}")
+
+#         cached_response = cache.get(request.message, request.user_id)
+#         if cached_response:
+#             logger.info(f"⚡ Cache hit — stats: {cache.stats}")
+#             return ChatResponse(**json_module.loads(cached_response))
+
+#         memory.add_message(request.user_id, "user", request.message)
+
+#         server_context       = memory.get_context(request.user_id, max_messages=6)
+#         conversation_context = request.context if request.context else server_context
+#         last_question        = memory.get_last_question(request.user_id)
+
+#         intent_result  = intent_detector.detect(request.message)
+#         primary_intent = intent_result["primary_intent"]
+#         sub_intent     = intent_result.get("sub_intent")
+#         sentiment      = intent_result.get("sentiment", "neutral")
+#         urgency        = intent_result.get("urgency", "low")
+
+#         message_lower = request.message.lower().strip()
+#         CONFIRM_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "alright", "yes please"}
+
+#         if message_lower in CONFIRM_WORDS:
+#             lq = (last_question or "").lower()
+#             cc = (conversation_context or "").lower()
+#             if "features" in lq or "learn more" in lq or "features" in cc:
+#                 primary_intent = "app_features_inquiry"
+#             elif "salah" in lq or "prayer" in lq:
+#                 primary_intent, sub_intent = "salah", "learn_more"
+#             elif "quran" in lq:
+#                 primary_intent, sub_intent = "quran", "learn_more"
+
+#         logger.info(f"🎯 Intent: {primary_intent} | Sub: {sub_intent} | Sentiment: {sentiment}")
+
+#         knowledge = rag_service.retrieve(request.message, top_k=5)
+
+#         user_profile              = memory.get_user_profile(request.user_id)
+#         user_profile["urgency"]   = urgency
+#         user_profile["sentiment"] = sentiment
+
+#         quick_reply = get_quick_response(
+#             request.message,
+#             primary_intent,
+#             sub_intent,
+#             user_profile,
+#             context=conversation_context,
+#             last_question=last_question,
+#             user_id=request.user_id,
+#         )
+
+#         if quick_reply:
+#             reply = quick_reply
+#             logger.info("⚡ Quick response used")
+#         else:
+#             prompt = SYSTEM_PROMPT.format(
+#                 context      = conversation_context or "(No previous conversation)",
+#                 user_profile = json_module.dumps(user_profile, indent=2),
+#                 knowledge    = knowledge or "(No specific knowledge retrieved)",
+#                 question     = request.message,
+#             )
+
+#             temperature = 0.3 if primary_intent in ["technical", "factual"] else 0.6
+#             max_tokens = 350 if urgency == "high" else 500
+
+#             llm_response = llm.chat.completions.create(
+#                 model="llama-3.1-8b-instant",
+#                 messages=[
+#                     {"role": "system", "content": prompt},
+#                     {"role": "user",   "content": request.message},
+#                 ],
+#                 temperature=temperature,
+#                 max_tokens=max_tokens,
+#             )
+
+#             reply = llm_response.choices[0].message.content.strip()
+
+#             if len(reply) > 2000 and urgency != "high":
+#                 cutoff = reply.rfind('.', 0, 2000)
+#                 if cutoff == -1:
+#                     cutoff = 2000
+#                 reply = reply[:cutoff + 1] + "\n\n_📲 Open the app for the full response._"
+
+#             logger.info(f"🤖 LLM reply generated ({len(reply)} chars)")
+
+#         from app.services.action_service import suggest_actions, get_motivational_quote, get_quick_reply_suggestions
+
+#         actions     = suggest_actions(primary_intent, user_profile, sub_intent=sub_intent, sentiment=sentiment)
+#         suggestions = get_quick_reply_suggestions(primary_intent, sub_intent)
+
+#         motivational_quote = None
+#         if primary_intent == "struggling" or user_profile.get("consistency") == "struggling":
+#             motivational_quote = get_motivational_quote("struggling")
+#         elif primary_intent == "consistent" or user_profile.get("consistency") == "high":
+#             motivational_quote = get_motivational_quote("high")
+#         elif user_profile.get("consistency") == "medium":
+#             motivational_quote = get_motivational_quote("medium")
+
+#         memory.add_message(request.user_id, "assistant", reply)
+
+#         response_data = {
+#             "reply":              reply,
+#             "intent":             primary_intent,
+#             "sub_intent":         sub_intent,
+#             "sentiment":          sentiment,
+#             "actions":            actions,
+#             "suggestions":        suggestions[:4],
+#             "motivational_quote": motivational_quote,
+#             "timestamp":          datetime.now().isoformat(),
+#         }
+
+#         cache.set(request.message, request.user_id, json_module.dumps(response_data), ttl_minutes=60)
+
+#         return ChatResponse(**response_data)
+
+#     except Exception as e:
+#         logger.error(f"❌ Chat error: {e}", exc_info=True)
+#         return ChatResponse(
+#             reply=(
+#                 "I'm having trouble processing your request right now. "
+#                 "Please try again in a moment. JazakAllah khair for your patience. 🤲"
+#             ),
+#             intent="error",
+#             sub_intent=None,
+#             sentiment="neutral",
+#             actions={"reminders": [], "habits": [], "duas": [], "quick_actions": []},
+#             suggestions=["Try again", "Browse Quran", "Check prayer times", "Contact support"],
+#             motivational_quote=None,
+#             timestamp=datetime.now().isoformat(),
+#         )
