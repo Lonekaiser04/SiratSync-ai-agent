@@ -12,10 +12,7 @@
 #     timestamp:          str
 
 
-# class SummarizeResponse(BaseModel):
-#     summary:         str
-#     original_length: int
-#     summary_length:  int
+
 
 from pydantic import BaseModel
 from typing import Optional, List, Dict
@@ -36,3 +33,7 @@ class ChatResponse(BaseModel):
     motivational_quote: Optional[str] = None
     timestamp:          str
     sources:            List[SourceItem] = []   # ✅ NEW
+class SummarizeResponse(BaseModel):
+    summary:         str
+    original_length: int
+    summary_length:  int
