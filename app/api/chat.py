@@ -271,8 +271,6 @@ def _build_sources(
         # Arabic is always present for verse lookups
         if _has_arabic_text(reply):
             sources.append(_SRC_ARABIC)
-            sources.a_SRC_KBppend()
-
         # Only add translation sources if they actually appear in the reply
         if _has_english_translation(reply):
             sources.append(_SRC_ENGLISH)
@@ -289,7 +287,6 @@ def _build_sources(
     if is_quran_topic and used_rag:
         if _has_arabic_text(reply):
             sources.append(_SRC_ARABIC)
-            sources.a_SRC_KBppend()
         if _has_english_translation(reply):
             sources.append(_SRC_ENGLISH)
         if _has_urdu_text(reply):
