@@ -641,48 +641,92 @@ class RAGKnowledge:
         ql       = query.lower()
         expanded = _expand_query(ql)
         mw       = _meaningful_words(expanded)
-
         KNOWN_VERSE_MAPPINGS = {
-            "rights of sisters": [(4, 11), (4, 12), (4, 176), (4, 7)],
-            "sisters rights": [(4, 11), (4, 12), (4, 176), (4, 7)],
-            "rights of women": [(4, 19), (4, 32), (4, 34), (2, 228)],
-            "women rights": [(4, 19), (4, 32), (4, 34), (2, 228)],
-            "inheritance": [(4, 11), (4, 12), (4, 176), (2, 180), (4, 7)],
-            "rights of parents": [(17, 23), (17, 24), (31, 14), (46, 15)],
+            # ── Relationship & Family ──────────────────────────────────────
+            "rights of sisters":  [(4, 11), (4, 12), (4, 176), (4, 7)],
+            "sisters rights":     [(4, 11), (4, 12), (4, 176), (4, 7)],
+            "rights of women":    [(4, 19), (4, 32), (4, 34), (2, 228)],
+            "women rights":       [(4, 19), (4, 32), (4, 34), (2, 228)],
+            "women":              [(4, 19), (4, 34), (2, 228), (33, 35)],
+            "inheritance":        [(4, 11), (4, 12), (4, 176), (2, 180), (4, 7)],
+            "rights of parents":  [(17, 23), (17, 24), (31, 14), (46, 15)],
+            "parents":            [(17, 23), (17, 24), (31, 14), (46, 15)],
+            "mother":             [(17, 23), (31, 14), (46, 15)],
+            "father":             [(17, 23), (17, 24), (31, 14)],
             "rights of children": [(4, 11), (6, 151), (17, 31)],
-            "marriage in islam": [(4, 3), (4, 4), (30, 21), (24, 32)],
-            "divorce": [(2, 226), (2, 227), (65, 1), (65, 2)],
-            "forgiveness": [(39, 53), (3, 135), (4, 110), (42, 25)],
-            "patience": [(2, 155), (2, 156), (2, 157), (3, 200)],
-            "justice": [(4, 58), (4, 135), (5, 8), (16, 90)],
-            "riba": [(2, 275), (2, 276), (2, 278), (3, 130)],
-            "interest": [(2, 275), (2, 276), (2, 278), (3, 130)],
-            "alcohol": [(2, 219), (4, 43), (5, 90), (5, 91)],
-            "khamr": [(2, 219), (4, 43), (5, 90), (5, 91)],
-            "hijab": [(24, 30), (24, 31), (33, 59)],
-            "modesty": [(24, 30), (24, 31), (33, 59)],
-            "backbiting": [(49, 12), (104, 1)],
-            "honesty": [(2, 42), (33, 70), (4, 135)],
-            "neighbors": [(4, 36)],
-            "orphans": [(4, 6), (4, 10), (93, 9)],
-            "charity": [(2, 261), (2, 262), (2, 263), (2, 264), (2, 271)],
-            "zakat": [(2, 43), (2, 110), (9, 60)],
-            "fasting": [(2, 183), (2, 184), (2, 185), (2, 187)],
-            "prayer": [(2, 43), (2, 238), (4, 103), (29, 45)],
-            "salah": [(2, 43), (2, 238), (4, 103), (29, 45)],
+            "children":           [(4, 11), (6, 151), (17, 31), (2, 233)],
+            "marriage in islam":  [(4, 3), (4, 4), (30, 21), (24, 32)],
+            "marriage":           [(4, 3), (30, 21), (24, 32), (2, 221)],
+            "nikah":              [(4, 3), (30, 21), (24, 32), (2, 221)],
+            "divorce":            [(2, 226), (2, 227), (65, 1), (65, 2)],
+            "talaq":              [(2, 226), (2, 227), (65, 1), (65, 2)],
+            "husband":            [(4, 34), (2, 228), (30, 21)],
+            "wife":               [(4, 34), (2, 228), (30, 21), (4, 19)],
+            "family":             [(17, 23), (4, 1), (30, 21), (2, 233)],
+            # ── Worship & Practice ────────────────────────────────────────
+            "forgiveness":        [(39, 53), (3, 135), (4, 110), (42, 25)],
+            "repentance":         [(39, 53), (3, 135), (4, 110), (2, 222)],
+            "patience":           [(2, 155), (2, 156), (2, 157), (3, 200)],
+            "sabr":               [(2, 155), (2, 156), (2, 157), (3, 200)],
+            "gratitude":          [(14, 7), (2, 152), (31, 12)],
+            "shukr":              [(14, 7), (2, 152), (31, 12)],
+            "prayer":             [(2, 43), (2, 238), (4, 103), (29, 45)],
+            "salah":              [(2, 43), (2, 238), (4, 103), (29, 45)],
+            "fasting":            [(2, 183), (2, 184), (2, 185), (2, 187)],
+            "ramadan":            [(2, 183), (2, 185), (2, 187)],
+            "zakat":              [(2, 43), (2, 110), (9, 60)],
+            "charity":            [(2, 261), (2, 262), (2, 263), (2, 264), (2, 271)],
+            "sadaqah":            [(2, 261), (2, 271), (2, 274)],
+            "hajj":               [(2, 196), (2, 197), (3, 97)],
+            # ── Ethics & Character ────────────────────────────────────────
+            "justice":            [(4, 58), (4, 135), (5, 8), (16, 90)],
+            "honesty":            [(2, 42), (33, 70), (4, 135)],
+            "backbiting":         [(49, 12), (104, 1)],
+            "lying":              [(9, 119), (33, 70), (2, 42)],
+            "arrogance":          [(31, 18), (16, 23), (7, 13)],
+            "pride":              [(31, 18), (16, 23), (57, 23)],
+            "humility":           [(31, 18), (25, 63), (17, 37)],
+            "envy":               [(113, 5), (4, 54), (2, 109)],
+            "knowledge":          [(20, 114), (58, 11), (39, 9)],
+            "wisdom":             [(2, 269), (31, 12), (17, 39)],
+            "trust in allah":     [(65, 3), (3, 160), (39, 38)],
+            "tawakkul":           [(65, 3), (3, 160), (39, 38)],
+            # ── Forbidden Things ─────────────────────────────────────────
+            "riba":               [(2, 275), (2, 276), (2, 278), (3, 130)],
+            "interest":           [(2, 275), (2, 276), (2, 278), (3, 130)],
+            "alcohol":            [(2, 219), (4, 43), (5, 90), (5, 91)],
+            "khamr":              [(2, 219), (4, 43), (5, 90), (5, 91)],
+            "hijab":              [(24, 30), (24, 31), (33, 59)],
+            "modesty":            [(24, 30), (24, 31), (33, 59)],
+            # ── Neighbors & Society ───────────────────────────────────────
+            "neighbors":          [(4, 36)],
+            "orphans":            [(4, 6), (4, 10), (93, 9)],
+            # ── Afterlife ─────────────────────────────────────────────────
+            "paradise":           [(55, 46), (3, 133), (76, 12)],
+            "jannah":             [(55, 46), (3, 133), (76, 12)],
+            "hellfire":           [(2, 24), (14, 17), (38, 55)],
+            "jahannam":           [(2, 24), (14, 17), (38, 55)],
+            "death":              [(3, 185), (4, 78), (62, 8)],
+            "judgment day":       [(82, 1), (99, 1), (2, 281)],
+            "qiyamah":            [(82, 1), (99, 1), (2, 281)],
         }
         
-        for key, verse_refs in KNOWN_VERSE_MAPPINGS.items():
-            if key in ql:
-                priority_verses = []
-                for sid, vid in verse_refs:
-                    verse = self.get_verse_by_reference(sid, vid)
-                    if verse:
-                        verse["relevance_score"] = 100
-                        priority_verses.append(verse)
-                
-                if priority_verses:
-                    return {"surahs": [], "verses": priority_verses}
+        best_key_match = None
+        best_key_len   = 0
+        for key in KNOWN_VERSE_MAPPINGS:
+            if key in ql and len(key) > best_key_len:
+                best_key_len   = len(key)
+                best_key_match = key
+
+        if best_key_match:
+            priority_verses = []
+            for sid, vid in KNOWN_VERSE_MAPPINGS[best_key_match]:
+                verse = self.get_verse_by_reference(sid, vid)
+                if verse:
+                    verse["relevance_score"] = 100
+                    priority_verses.append(verse)
+            if priority_verses:
+                return {"surahs": [], "verses": priority_verses}
 
         surah_scores: list[tuple[float, dict]] = []
 
