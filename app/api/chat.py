@@ -149,18 +149,16 @@ async def chat(request: ChatRequest):
 
         memory.add_message(request.user_id, "assistant", reply)
 
-        # ✅ Build sources
-        is_quran_topic = rag_service._is_quran_topic_query(message_lower)
-        used_rag = bool(knowledge and knowledge != "(No specific knowledge retrieved)")
-        verses_shown = is_quran_topic  # if quran topic, verses were shown
+        is_verse_query  = _is_verse_or_surah_query(message_lower, rag_service)
+        is_quran_topic  = rag_service._is_quran_topic_query(message_lower)
+        used_rag        = bool(knowledge and knowledge != "(No specific knowledge retrieved)")
 
         sources = _build_sources(
-            primary_intent=primary_intent,
-            knowledge=knowledge,
             reply=reply,
-            used_rag=used_rag,
+            is_verse_query=is_verse_query,
             is_quran_topic=is_quran_topic,
-            verses_shown=verses_shown,
+            used_rag=used_rag,
+            was_quick_reply=bool(quick_reply),
         )
 
         response_data = {
@@ -205,30 +203,126 @@ async def chat(request: ChatRequest):
             motivational_quote=None,
             timestamp=datetime.now().isoformat(),
         )
+# ── Source definitions (single source of truth) ───────────────────────────────
+_SRC_ARABIC = {
+    "type":      "quran",
+    "label":     "القرآن الكريم",
+    "detail":    "Arabic — Uthmani Script",
+    "icon":      "quran",
+}
+_SRC_ENGLISH = {
+    "type":      "quran",
+    "label":     "Sahih International",
+    "detail":    "English Translation",
+    "icon":      "translation_en",
+}
+_SRC_URDU = {
+    "type":      "quran",
+    "label":     "Muhammad Ibrahim Junagarhi",
+    "detail":    "Urdu Translation — محمد ابراہیم جونا گڑھی",
+    "icon":      "translation_ur",
+}
+_SRC_KASHMIRI = {
+    "type":      "quran",
+    "label":     "Ather Managami",
+    "detail":    "Kashmiri Tafsir — اَتھَر مانَگامی",
+    "icon":      "translation_ks",
+}
+_SRC_AI = {
+    "type":      "ai_generated",
+    "label":     "SiratSync AI",
+    "detail":    "Groq LLaMA 3.1-8b",
+    "icon":      "ai",
+}
+_SRC_KB = {
+    "type":      "knowledge_base",
+    "label":     "SiratSync Knowledge Base",
+    "detail":    "Verified Islamic content database",
+    "icon":      "database",
+}
 
-def _build_sources(primary_intent: str, knowledge: str, reply: str, used_rag: bool, is_quran_topic: bool, verses_shown: bool) -> list:
+
+def _reply_has(reply: str, pattern: str) -> bool:
+    """Check if reply contains a pattern (case-insensitive)."""
+    return bool(re.search(pattern, reply, re.IGNORECASE))
+
+
+def _has_arabic_text(reply: str) -> bool:
+    return bool(re.search(r'[\u0600-\u06FF]', reply))
+
+
+def _has_urdu_text(reply: str) -> bool:
+    # Urdu label appears in reply when RAG returns verse data
+    return _reply_has(reply, r'\b(Urdu|اردو)\s*:')
+
+
+def _has_kashmiri_text(reply: str) -> bool:
+    return _reply_has(reply, r'(Kashmiri|🏔️|کٲشُر|كشميري)\s*:')
+
+
+def _has_english_translation(reply: str) -> bool:
+    return _reply_has(reply, r'\b(English)\s*:')
+
+
+def _build_sources(
+    reply: str,
+    is_verse_query: bool,
+    is_quran_topic: bool,
+    used_rag: bool,
+    was_quick_reply: bool,
+) -> list:
+    """
+    Build accurate source attribution based on:
+    - What type of query was made
+    - What is actually present in the reply text
+    """
     sources = []
 
-    if is_quran_topic and verses_shown:
-        # Quran topic — verses were shown verbatim
-        sources.append({"type": "quran", "label": "Quran — Arabic", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Sahih International (English)", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Urdu Translation", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Kashmiri Translation", "reference": None})
-        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Explanation by Groq LLaMA 3.1"})
+    # ── Case 1: Specific verse or surah lookup ────────────────────────────────
+    if is_verse_query:
+        # Arabic is always present for verse lookups
+        if _has_arabic_text(reply):
+            sources.append(_SRC_ARABIC)
+        # Only add translation sources if they actually appear in the reply
+        if _has_english_translation(reply):
+            sources.append(_SRC_ENGLISH)
+        if _has_urdu_text(reply):
+            sources.append(_SRC_URDU)
+        if _has_kashmiri_text(reply):
+            sources.append(_SRC_KASHMIRI)
+        # If nothing detected but it's a verse query, at least show Arabic + English
+        if not sources:
+            sources = [_SRC_ARABIC, _SRC_ENGLISH]
+        return sources
 
-    elif primary_intent in ["quran", "quran_verse"] and used_rag:
-        # Specific verse lookup
-        sources.append({"type": "quran", "label": "Quran — Arabic", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Sahih International (English)", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Urdu Translation", "reference": None})
-        sources.append({"type": "quran", "label": "Quran — Kashmiri Translation", "reference": None})
+    # ── Case 2: Quran topic query (marriage, parents, etc.) ───────────────────
+    if is_quran_topic and used_rag:
+        if _has_arabic_text(reply):
+            sources.append(_SRC_ARABIC)
+        if _has_english_translation(reply):
+            sources.append(_SRC_ENGLISH)
+        if _has_urdu_text(reply):
+            sources.append(_SRC_URDU)
+        if _has_kashmiri_text(reply):
+            sources.append(_SRC_KASHMIRI)
+        # AI explanation is added when topic query goes through LLM explanation
+        sources.append(_SRC_AI)
+        if not sources or sources == [_SRC_AI]:
+            # Fallback: topic was retrieved from KB, not verse data
+            sources = [_SRC_KB, _SRC_AI]
+        return sources
 
-    elif used_rag and knowledge and knowledge != "(No specific knowledge retrieved)":
-        sources.append({"type": "knowledge_base", "label": "SiratSync Knowledge Base", "detail": "Islamic content database"})
-        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Groq LLaMA 3.1"})
+    # ── Case 3: Quick reply (app info, features, direct answers) ─────────────
+    if was_quick_reply:
+        sources.append(_SRC_KB)
+        return sources
 
-    else:
-        sources.append({"type": "ai_generated", "label": "AI Generated", "detail": "Groq LLaMA 3.1"})
+    # ── Case 4: Knowledge base answered without LLM ───────────────────────────
+    if used_rag and not is_quran_topic:
+        sources.append(_SRC_KB)
+        sources.append(_SRC_AI)
+        return sources
 
+    # ── Case 5: Pure LLM response ─────────────────────────────────────────────
+    sources.append(_SRC_AI)
     return sources
