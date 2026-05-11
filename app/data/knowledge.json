@@ -1,0 +1,792 @@
+{
+  "developer": [
+    {
+      "topic": "Kaiser",
+      "content": "This app was developed by Kaiser Mohiuddin, a passionate developer dedicated to helping Muslims improve their Islamic lifestyle through technology.Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
+    },
+        {
+      "topic": "where_from_Kaiser",
+      "content": "Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
+    },
+    {
+      "topic": "who_is_kaiser",
+      "content": "Kaiser Mohiuddin is a Computer Science Student and the founder & developer of SiratSync. He is a passionate developer dedicated to helping Muslims improve their Islamic lifestyle through technology. He believes in using modern AI and mobile technologies to make Islamic practices accessible, consistent, and meaningful for Muslims around the world.Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
+    },
+    {
+      "topic": "kaiser_background",
+      "content": "Kaiser Mohiuddin is a Computer Science student with a deep passion for Islamic technology. He started developing SiratSync to solve the problem of inconsistency in daily worship that many Muslims face. His technical expertise includes Flutter, FastAPI, Groq's LLaMA, Firebase, and RAG systems for Islamic knowledge retrieval.Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
+    },
+    {
+      "topic": "kaiser_mission",
+      "content": "Kaiser's mission is to bridge the gap between modern technology and Islamic spirituality. He wants every Muslim to have a companion that feels like a caring friend, gently nudging them toward better Islamic habits without judgment."
+    },
+    {
+      "topic": "kaiser_vision",
+      "content": "Kaiser envisions a world where every Muslim, regardless of their busy schedule or location, can maintain consistency (istiqamah) in their worship through smart, compassionate, and authentic digital tools."
+    },
+    {
+      "topic": "kaiser_contact",
+      "content": "You can reach Kaiser Mohiuddin at lonekaiser04@gmail.com. He is open to collaboration, feedback, and opportunities in Islamic tech and AI."
+    },
+    {
+      "topic": "kaiser_open_source",
+      "content": "Kaiser is passionate about open source and believes that Islamic knowledge and tools should be accessible to everyone. He actively contributes to Islamic tech projects and welcomes other developers to join this noble cause."
+    },
+    {
+      "topic": "kaiser_inspiration",
+      "content": "Kaiser was inspired by the hadith: 'The most beloved deeds to Allah are those done consistently, even if small.' (Sahih Bukhari). This hadith drives everything he builds in SiratSync."
+    },
+    {
+      "topic": "mission",
+      "content": "The mission of SiratSync is to help Muslims become consistent in their daily worship (Salah, Quran, Dhikr) using AI-powered guidance and habit tracking."
+    },
+    {
+      "topic": "vision",
+      "content": "To create a companion that feels like a caring friend, gently nudging users toward better Islamic habits without judgment."
+    },
+    {
+      "topic": "tech_stack",
+      "content": "SiratSync is built with Flutter for the frontend, Firebase & FastAPI for the backend, and Groq's LLaMA 3.1 for AI responses. The app uses Firebase for user data and RAG for Islamic knowledge retrieval."
+    },
+    {
+      "topic": "github",
+      "content": "The developer is passionate about open source and Islamic tech. Contact: lonekaiser04@gmail.com"
+    },
+    {
+      "topic": "inspiration",
+      "content": "This app was inspired by the hadith: 'The most beloved deeds to Allah are those done consistently, even if small.' (Sahih Bukhari)"
+    }
+  ],
+  "salah": [
+    {
+      "topic": "importance",
+      "content": "Salah is the second pillar of Islam. It differentiates a believer from non-believer.",
+      "reference": "Sahih Muslim"
+    },
+    {
+      "topic": "fajr",
+      "content": "Fajr prayer is witnessed by angels. The Prophet (ﷺ) said it's the most difficult prayer for hypocrites.",
+      "reference": "Sahih Bukhari"
+    },
+    {
+      "topic": "benefits",
+      "content": "Salah brings peace to the heart, removes sins, and brings you closer to Allah. It teaches discipline and time management.",
+      "reference": "Quran 29:45"
+    },
+    {
+      "topic": "missed_prayers",
+      "content": "If you miss a prayer, make it up as soon as you remember. Never abandon prayers completely. Start with one prayer at a time.",
+      "reference": "Islamic Guidance"
+    },
+    {
+      "topic": "learn_salah",
+      "content": "SiratSync includes a 'Learn Salah' module with step-by-step guide to perform Salah, including actions, words, and meanings. Perfect for beginners and new Muslims."
+    }
+  ],
+  "productivity": [
+    {
+      "topic": "consistency",
+      "content": "The most beloved deeds to Allah are those done consistently, even if small.",
+      "reference": "Sahih Bukhari"
+    },
+    {
+      "topic": "habits",
+      "content": "Start small. 2 minutes of Quran daily is better than 30 minutes once a week."
+    },
+    {
+      "topic": "morning_routine",
+      "content": "Start your day with Fajr, then morning Adhkar, then 10 minutes of Quran. This sets a positive tone for the entire day."
+    },
+    {
+      "topic": "overwhelm",
+      "content": "When feeling overwhelmed, focus on ONE habit. Master it, then add another. Don't try to change everything at once."
+    }
+  ],
+  "duas": [
+    {
+      "situation": "waking_up",
+      "dua": "Alhamdulillahilladhi ahyana ba'da ma amatana wa ilayhin nushur",
+      "meaning": "All praise to Allah who gave us life after death and to Him is the return"
+    },
+    {
+      "situation": "leaving_home",
+      "dua": "Bismillah, tawakkaltu ala Allah, la hawla wa la quwwata illa billah",
+      "meaning": "In the name of Allah, I put my trust in Allah, there is no power or strength except with Allah"
+    },
+    {
+      "situation": "entering_mosque",
+      "dua": "Allahumma iftah li abwaba rahmatik",
+      "meaning": "O Allah, open for me the doors of Your mercy"
+    },
+    {
+      "situation": "anxiety",
+      "dua": "Hasbunallahu wa ni'mal wakeel",
+      "meaning": "Allah is sufficient for us, and He is the best disposer of affairs"
+    },
+    {
+      "situation": "study_focus",
+      "dua": "Rabbi zidni ilma",
+      "meaning": "My Lord, increase me in knowledge"
+    }
+  ],
+  "ramadan": [
+    {
+      "topic": "preparation",
+      "content": "Prepare for Ramadan by fasting Mondays and Thursdays, reading Quran daily, and making sincere dua."
+    },
+    {
+      "topic": "productivity",
+      "content": "During Ramadan, focus on quality over quantity. Even 1 page of Quran with understanding is better than 10 without."
+    },
+    {
+      "topic": "ramadan_mode",
+      "content": "SiratSync includes a special Ramadan Mode with Suhoor & Iftar timings, Ramadan Duas, fasting reminders, early prayer notifications, and prayer countdown to help you stay consistent throughout the blessed month."
+    }
+  ],
+  "tahara": [
+    {
+      "topic": "wudu",
+      "content": "Wudu (ablution) cleanses both body and soul. The Prophet (ﷺ) said that sins fall off with each drop of water during wudu."
+    }
+  ],
+  "app_features": [
+    {
+      "topic": "ai_assistant",
+      "content": "SiratSync features an AI-powered Islamic assistant that understands your struggles and provides personalized guidance based on your consistency."
+    },
+    {
+      "topic": "habit_tracking",
+      "content": "Track your daily prayers, Quran reading, and Dhikr. The app celebrates your streaks and encourages you during difficult times."
+    },
+    {
+      "topic": "community",
+      "content": "Connect with other Muslims on the same journey. Share achievements, ask questions, and find accountability partners in a peaceful, moderated Islamic social space."
+    },
+    {
+      "topic": "quran_module",
+      "content": "Read the Noble Quran in elegant script with English, Kashmiri (with Tafsir), and Urdu translations. Adjustable font size, spacing, reading themes, bookmark ayahs, and clean Mushaf-style layout."
+    },
+    {
+      "topic": "hadith_module",
+      "content": "Access authentic Hadith collections including Sahih al-Bukhari and Sahih Muslim. Browse by book and chapter, search, read with clean interface, daily Hadith reminders, share and save Hadiths."
+    },
+    {
+      "topic": "prayer_times",
+      "content": "Accurate prayer times auto-calculated based on your location. Supports major calculation methods and madhhabs. Adhan alerts for all five daily prayers with optional early reminders."
+    },
+    {
+      "topic": "qibla_finder",
+      "content": "High-accuracy Qibla compass with real-time responsiveness. Works offline once calibrated (prefer online for best accuracy)."
+    },
+    {
+      "topic": "tasbih_counter",
+      "content": "Smooth digital tasbih counter with reset functionality. Perfect for dhikr after prayers or any time."
+    },
+    {
+      "topic": "aurad_e_fatiha",
+      "content": "Download Aurad-e-Fatiha once and access anytime. Smooth Arabic text that works entirely offline after first download."
+    },
+    {
+      "topic": "shahadat",
+      "content": "Learn and read the Shahada (Testimony of Faith) with Arabic, transliteration, and meaning available in 14 languages."
+    },
+    {
+      "topic": "islamic_calendar",
+      "content": "Hijri calendar with daily Islamic dates. Highlights current Islamic date and important events."
+    },
+    {
+      "topic": "themes",
+      "content": "Beautiful themes including Light, Dark, and System default for comfortable reading in any lighting condition."
+    },
+    {
+      "topic": "multilingual",
+      "content": "SiratSync supports multiple languages including English, Urdu, Hindi, Arabic, and Malay. More languages coming soon."
+    },
+    {
+      "topic": "offline_mode",
+      "content": "SiratSync works offline for Quran, Sahih Bukhari, Sahih Muslim, Duas, Aurad-e-Fatiha, Qibla, Tasbih, and cached prayer times."
+    }
+  ],
+  "app_info": {
+    "name": "SiratSync",
+    "full_name": "SiratSync - Islamic Lifestyle Companion",
+    "tagline": "Consistency in Worship, Clarity in Faith",
+    "description": "SiratSync is a beautifully crafted Islamic lifestyle app designed to help Muslims stay connected to their deen with ease. Whether you want to read the Quran, explore authentic Hadith, track your worship habits, learn Salah, or join a peaceful Muslim community—SiratSync brings everything together in one clean and modern app. Built with simplicity, authenticity, and user comfort in mind, SiratSync is your complete companion for spiritual growth.",
+    "version": "2.0",
+    "platforms": ["iOS", "Android"],
+    "languages": ["English", "Arabic", "Urdu", "Hindi", "Malay"],
+    "offline_support": true,
+    "no_ads": true,
+    "target_audience": ["Practicing Muslims", "Students", "Professionals", "New Muslims", "Busy Individuals", "Beginners", "Families"]
+  },
+  "vision_and_mission": {
+    "vision": "To create a companion that feels like a caring friend, gently nudging users toward better Islamic habits without judgment.",
+    "mission": "The mission of SiratSync is to help Muslims become consistent in their daily worship (Salah, Quran, Dhikr) using AI-powered guidance and habit tracking.",
+    "core_values": ["Consistency", "Simplicity", "Privacy", "Authenticity", "Offline-first", "Community", "Accessibility"],
+    "inspiration": "The most beloved deeds to Allah are those done consistently, even if small. (Sahih Bukhari)"
+  },
+  "features": [
+    {
+      "name": "Quran Module",
+      "description": "Full Quran with Arabic text, multiple translations, recitation support, and adjustable reading experience.",
+      "capabilities": ["Read Quran", "English translation", "Kashmiri translation with Tafsir", "Urdu translation", "Adjustable font size", "Adjustable spacing", "Reading themes", "Bookmark ayahs", "Clean Mushaf-style layout"],
+      "related_keywords": ["quran", "read quran", "recitation", "tilawat", "quran translation", "quranic verses", "surah", "ayat", "juz", "quran offline", "kashmiri tafsir", "urdu quran"]
+    },
+    {
+      "name": "Prayer Times",
+      "description": "Accurate Salah times based on user location with Adhan notifications and multiple calculation methods.",
+      "capabilities": ["Automatic prayer times", "Adhan notifications", "Qibla direction", "Multiple calculation methods", "Madhhab options", "Early reminders", "Ramadan special times", "Prayer countdown"],
+      "related_keywords": ["salah", "prayer times", "namaz", "adhan", "azan", "fajr", "dhuhr", "asr", "maghrib", "isha", "prayer schedule", "salat timings"]
+    },
+    {
+      "name": "Qibla Finder",
+      "description": "High-accuracy compass-based Qibla direction finder with real-time responsiveness.",
+      "capabilities": ["Find Qibla direction", "Compass calibration", "Offline mode", "Real-time responsiveness"],
+      "related_keywords": ["qibla", "kibla", "qibla direction", "mecca direction", "kaaba", "prayer direction"]
+    },
+    {
+      "name": "Hadith Collection",
+      "description": "Authentic Hadith collections including Sahih al-Bukhari and Sahih Muslim.",
+      "capabilities": ["Read authentic hadith", "Browse by book and chapter", "Daily hadith reminder", "Search by keyword", "Bookmark hadith", "Share hadith", "Save hadith"],
+      "related_keywords": ["hadith", "sunnah", "bukhari", "muslim", "prophet sayings", "authentic hadith", "hadith collection", "sahih al-bukhari", "sahih muslim"]
+    },
+    {
+      "name": "Duas Collection",
+      "description": "Comprehensive collection of authentic duas from Quran and Sunnah, organized by categories.",
+      "capabilities": ["Authentic duas", "Arabic + translation", "Organized categories", "Easy learning"],
+      "related_keywords": ["dua", "supplication", "adhkar", "dhikr", "islamic prayer", "dua for anxiety", "dua for study"]
+    },
+    {
+      "name": "Tasbih Counter",
+      "description": "Smooth digital dhikr counter with reset functionality.",
+      "capabilities": ["Count dhikr", "Reset counter", "Offline-friendly"],
+      "related_keywords": ["tasbih", "dhikr", "subhanallah", "alhamdulillah", "allahu akbar", "digital tasbih", "dhikr counter"]
+    },
+    {
+      "name": "Habit Tracker",
+      "description": "Track religious habits including Salah, Quran, Fasting, and Dhikr with streak analytics.",
+      "capabilities": ["Track Salah consistency", "Quran reading goals", "Fasting tracker", "Dhikr streaks", "Weekly/monthly analytics", "Progress charts", "Reminders"],
+      "related_keywords": ["habit tracker", "consistency", "istiqamah", "streak", "salah streak", "quran habit", "fasting tracker", "daily habits", "religious habits", "accountability", "ibadah tracking"]
+    },
+    {
+      "name": "Islamic Calendar",
+      "description": "Hijri calendar with Islamic dates and important events.",
+      "capabilities": ["Hijri date display", "Islamic months", "Highlights current date"],
+      "related_keywords": ["hijri calendar", "islamic calendar", "ramadan", "eid", "islamic months", "muharram", "rajab", "shawwal"]
+    },
+    {
+      "name": "Community",
+      "description": "Peaceful Islamic social space built with proper adab and safety.",
+      "capabilities": ["Upload Islamic reminders", "Share duas and reflections", "Follow other users", "Private or public statistics", "Notifications for likes and follows", "Personalized Islamic feed", "Report system", "Strict moderation", "Clear community guidelines"],
+      "related_keywords": ["community", "islamic community", "reminders", "accountability", "islamic discussion", "faith community", "islamic social"]
+    },
+    {
+      "name": "Learn Salah",
+      "description": "Step-by-step guide to perform Salah with actions, words, and meanings.",
+      "capabilities": ["Step-by-step guide", "Actions and words", "Meanings", "Great for beginners"],
+      "related_keywords": ["learn salah", "namaz guide", "how to pray", "salah for beginners", "prayer guide", "islamic prayer"]
+    },
+    {
+      "name": "Shahadat",
+      "description": "Learn and read the Shahada (Testimony of Faith) in multiple languages.",
+      "capabilities": ["Arabic text", "Transliteration", "Meaning", "Available in 14 languages"],
+      "related_keywords": ["shahada", "shahadat", "testimony of faith", "kalima", "islamic declaration"]
+    },
+    {
+      "name": "Aurad-e-Fatiha",
+      "description": "Download once and read offline with smooth Arabic text.",
+      "capabilities": ["Download once", "Access anytime", "Smooth Arabic text", "Works entirely offline"],
+      "related_keywords": ["aurad e fatiha", "aurd", "fatiha", "offline duas"]
+    },
+    {
+      "name": "Themes",
+      "description": "Beautiful themes for comfortable reading in any lighting.",
+      "capabilities": ["Light theme", "Dark theme", "System default"],
+      "related_keywords": ["themes", "dark mode", "light mode", "reading mode"]
+    }
+  ],
+  "user_intents": [
+    {
+      "intent_name": "prayer_times",
+      "keywords": ["prayer time", "salah time", "namaz time", "fajr time", "dhuhr", "asr", "maghrib", "isha", "adhan", "azan", "when is prayer"],
+      "example_queries": ["What time is Fajr?", "Show me today's prayer times", "When does Maghrib start?"],
+      "response": "You can check prayer times in the Prayer section of SiratSync. Make sure location services are enabled for accurate timings. The app supports multiple calculation methods and madhhabs. Would you like me to help you set up Adhan notifications?"
+    },
+    {
+      "intent_name": "read_quran",
+      "keywords": ["read quran", "quran recitation", "tilawat", "surah", "ayat", "quran translation", "quran offline", "recite quran", "kashmiri translation", "urdu translation"],
+      "example_queries": ["How to read Quran in the app?", "Can I read Quran offline?", "Show me Surah Al-Fatiha"],
+      "response": "SiratSync's Quran module offers elegant Arabic script with English, Kashmiri (with Tafsir), and Urdu translations. You can adjust font size, spacing, and themes. All content is available offline. Which surah would you like to read?"
+    },
+    {
+      "intent_name": "track_habits",
+      "keywords": ["habit tracker", "track salah", "consistency", "streak", "daily habits", "istiqamah", "quran habit", "prayer streak", "ibadah tracking"],
+      "example_queries": ["How to track my prayers?", "I want to build consistency", "How do streaks work?"],
+      "response": "The Habit Tracker in SiratSync helps you build consistency in your worship. You can track Salah, Quran reading, Fasting, and Dhikr. Set daily goals, earn streaks, and view clean progress charts. Small consistent steps are loved by Allah."
+    },
+    {
+      "intent_name": "find_qibla",
+      "keywords": ["qibla", "qibla direction", "mecca direction", "kaaba direction", "prayer direction", "find qibla"],
+      "example_queries": ["Which way is Qibla?", "Help me find Qibla direction", "Where is Mecca from here?"],
+      "response": "Use the Qibla Finder in SiratSync. It provides high-accuracy Qibla compass with real-time responsiveness. Calibrate your compass and follow the direction to the Kaaba in Mecca. Works offline after calibration."
+    },
+    {
+      "intent_name": "duas",
+      "keywords": ["dua", "supplication", "adhkar", "morning dua", "evening dua", "prayer dua", "islamic prayer", "dua for help"],
+      "example_queries": ["What dua should I say in the morning?", "Dua for anxiety", "Show me duas for daily use"],
+      "response": "SiratSync's Duas section contains authentic supplications from Quran and Sunnah, organized by categories. Each dua includes Arabic text and translation. You can find duas for morning, evening, anxiety, study, and more."
+    },
+    {
+      "intent_name": "hadith",
+      "keywords": ["hadith", "sunnah", "prophet muhammad", "bukhari", "muslim", "authentic hadith", "prophet sayings", "sahih al-bukhari", "sahih muslim"],
+      "example_queries": ["Show me hadith about patience", "What did the Prophet say about prayer?", "Hadith on kindness"],
+      "response": "SiratSync includes Sahih al-Bukhari and Sahih Muslim. You can browse by book and chapter, search, bookmark, save, and share hadith. Would you like a daily hadith reminder?"
+    },
+    {
+      "intent_name": "tasbih",
+      "keywords": ["tasbih", "dhikr", "subhanallah", "alhamdulillah", "allahu akbar", "digital tasbih", "dhikr counter"],
+      "example_queries": ["How to use tasbih counter?", "Count dhikr for me", "What to say for tasbih?"],
+      "response": "The digital Tasbih Counter in SiratSync helps you keep track of your dhikr with smooth counting and reset functionality. Perfect for after prayers or any time you want to remember Allah."
+    },
+    {
+      "intent_name": "islamic_calendar",
+      "keywords": ["hijri date", "islamic date", "ramadan date", "eid date", "islamic months", "today hijri"],
+      "example_queries": ["What is today's Islamic date?", "When is Ramadan?", "Show me Islamic calendar"],
+      "response": "The Islamic Calendar in SiratSync shows Hijri dates, Islamic months, and highlights the current Islamic date. Perfect for knowing important Islamic dates."
+    },
+    {
+      "intent_name": "community",
+      "keywords": ["community", "share reminder", "islamic group", "accountability partner", "ask question", "islamic discussion", "islamic social"],
+      "example_queries": ["How to join community?", "Can I share Islamic reminders?", "Find accountability partner"],
+      "response": "SiratSync Community is a peaceful Islamic social space built with proper adab and safety. You can upload reminders, duas, reflections, follow users, and build a personalized Islamic feed. The community includes report system and strict moderation."
+    },
+    {
+      "intent_name": "offline_access",
+      "keywords": ["offline", "no internet", "work offline", "offline mode", "without internet"],
+      "example_queries": ["Does the app work offline?", "Can I read Quran without internet?", "Offline features"],
+      "response": "SiratSync is designed with offline-first philosophy. Quran, Sahih Bukhari, Sahih Muslim, Duas, Aurad-e-Fatiha, Qibla, Tasbih, and cached prayer times work without internet."
+    },
+    {
+      "intent_name": "learn_salah",
+      "keywords": ["learn salah", "how to pray", "namaz guide", "salah steps", "prayer guide", "beginners salah"],
+      "example_queries": ["How do I pray?", "Teach me Salah", "What do I say in prayer?"],
+      "response": "SiratSync includes a 'Learn Salah' module with step-by-step guide to perform Salah, including actions, words, and meanings. It's perfect for beginners, new Muslims, or anyone wanting to improve their prayer."
+    },
+    {
+      "intent_name": "shahadat",
+      "keywords": ["shahada", "shahadat", "kalima", "testimony of faith", "islamic declaration"],
+      "example_queries": ["What is the Shahada?", "How to say Shahada?", "Teach me Kalima"],
+      "response": "The Shahadat module in SiratSync helps you learn and read the Testimony of Faith with Arabic, transliteration, and meaning available in 14 languages. Essential for new Muslims and anyone wanting to understand the foundation of Islam."
+    },
+    {
+      "intent_name": "aurad_e_fatiha",
+      "keywords": ["aurad e fatiha", "aurd", "fatiha", "aurad"],
+      "example_queries": ["What is Aurad-e-Fatiha?", "How to read Aurad-e-Fatiha?", "Download Aurad"],
+      "response": "Aurad-e-Fatiha in SiratSync can be downloaded once and accessed anytime. It features smooth Arabic text and works entirely offline after first download."
+    },
+    {
+      "intent_name": "ramadan_mode",
+      "keywords": ["ramadan", "suhoor", "iftar", "ramadan timings", "fasting", "ramadan duas"],
+      "example_queries": ["What are Suhoor timings?", "Ramadan mode features", "Fasting reminders"],
+      "response": "SiratSync's Ramadan Mode includes Suhoor & Iftar timings, Ramadan Duas, fasting reminders, early prayer notifications, and prayer countdown to help you stay consistent throughout the blessed month."
+    }
+  ],
+  "faqs": [
+    {"question": "Is SiratSync free?", "answer": "Yes, SiratSync is completely free with no ads. We believe Islamic guidance should be accessible to everyone."},
+    {"question": "Does the app work offline?", "answer": "Yes, core features like Quran, Sahih Bukhari, Sahih Muslim, Duas, Aurad-e-Fatiha, Qibla, and Tasbih work offline. Prayer times need occasional internet for accurate updates."},
+    {"question": "How accurate are prayer times?", "answer": "Prayer times use your location and multiple calculation methods (MWL, ISNA, Egypt, etc.). You can adjust calculation method and madhhab in settings."},
+    {"question": "Can I read Quran in different languages?", "answer": "Yes, Quran module supports translations in English, Kashmiri (with Tafsir), Urdu, and more. You can select your preferred translation in settings."},
+    {"question": "How do I set up Adhan notifications?", "answer": "Go to Prayer Times → Settings → Enable Notifications. You can also customize which prayers trigger Adhan and set early reminders."},
+    {"question": "What is the Habit Tracker?", "answer": "The Habit Tracker helps you build consistency in Salah, Quran, Fasting, and Dhikr. It tracks your daily completion, shows your streaks, and provides progress charts."},
+    {"question": "Can I export my habit data?", "answer": "Currently, habit data stays within the app. Export feature is planned for future updates."},
+    {"question": "Which Hadith collections are included?", "answer": "Sahih al-Bukhari and Sahih Muslim are included. More Hadith books are being added soon."},
+    {"question": "How to find Qibla direction?", "answer": "Open Qibla Finder in SiratSync, calibrate your compass, and follow the direction to Mecca. It works offline after calibration."},
+    {"question": "Does the app have Ramadan features?", "answer": "Yes, Ramadan mode includes Suhoor/Iftar times, special duas, fasting reminders, early prayer notifications, and prayer countdown."},
+    {"question": "How to bookmark a verse?", "answer": "While reading Quran, tap the bookmark icon next to any verse. Access all bookmarks from the Bookmarks section."},
+    {"question": "What are morning/evening adhkar?", "answer": "Morning and evening adhkar are authentic supplications recommended by the Prophet (ﷺ) to recite daily for protection and blessings."},
+    {"question": "How to reset my habit streaks?", "answer": "Streaks reset automatically when you miss a day. You cannot manually reset them as they reflect actual consistency."},
+    {"question": "Does the app track missed prayers?", "answer": "Yes, you can log which prayers you missed. The app helps you make them up and tracks your qada (make-up) prayers."},
+    {"question": "Can I use the app for my children?", "answer": "Yes, SiratSync is family-friendly. You can create multiple profiles under one account for family members."},
+    {"question": "How to change calculation method for prayer times?", "answer": "Settings → Prayer Times → Calculation Method → Choose from MWL, ISNA, Egypt, Makkah, etc."},
+    {"question": "Is my data private?", "answer": "Yes, we take privacy seriously. No personal data is sold or shared. You can delete your data anytime from settings."},
+    {"question": "How to contact support?", "answer": "Email lonekaiser04@gmail.com or use the Contact Us form in app settings."},
+    {"question": "Will more features be added?", "answer": "Yes, we continuously improve. More Hadith books, voice duas, and smart coaching are coming soon!"},
+    {"question": "What is Aurad-e-Fatiha?", "answer": "Aurad-e-Fatiha is a collection of spiritual litanies that can be downloaded once in SiratSync and read offline with smooth Arabic text."},
+    {"question": "Does SiratSync have Learn Salah?", "answer": "Yes, SiratSync includes a step-by-step Learn Salah module with actions, words, and meanings. Great for beginners."},
+    {"question": "What languages does SiratSync support?", "answer": "SiratSync currently supports English, Urdu, Hindi, Arabic, and Malay. More languages coming soon."},
+    {"question": "Is there a community feature?", "answer": "Yes, SiratSync Community is a peaceful Islamic social space with moderation, report system, and personalized Islamic feed."}
+  ],
+  "keywords": {
+    "prayer": ["salah", "namaz", "salat", "prayer", "fajr", "dhuhr", "asr", "maghrib", "isha", "tahajjud", "witir", "sunnah", "nafl"],
+    "quran": ["quran", "koran", "qur'an", "alquran", "tilawat", "recitation", "hifz", "memorization", "tajweed", "tarteel", "kashmiri tafsir", "urdu quran"],
+    "dua": ["dua", "supplication", "prayer", "adhkar", "dhikr", "remembrance", "invocation", "blessing"],
+    "hadith": ["hadith", "sunnah", "prophet", "muhammad", "bukhari", "muslim", "tirmidhi", "abudawud", "nasai", "ibnmajah", "sahih al-bukhari", "sahih muslim"],
+    "consistency": ["istiqamah", "consistent", "streak", "habit", "daily", "routine", "discipline", "regular"],
+    "qibla": ["qibla", "kibla", "mecca", "makkah", "kaaba", "direction", "compass"],
+    "calendar": ["hijri", "islamic", "ramadan", "eid", "muharram", "safar", "rajab", "shaban", "shawwal", "dhul hijjah"],
+    "community": ["community", "social", "friends", "accountability", "reminders", "sharing", "discussion", "islamic feed"],
+    "learn_salah": ["learn salah", "namaz guide", "how to pray", "salah steps", "prayer guide", "beginners"],
+    "shahadat": ["shahada", "kalima", "testimony of faith", "islamic declaration"],
+    "aurad": ["aurad e fatiha", "aurd", "fatiha", "spiritual litanies"],
+    "tasbih": ["tasbih", "dhikr", "subhanallah", "alhamdulillah", "allahu akbar", "digital tasbih"]
+  },
+  "responses": {
+    "greeting": "Assalamu alaikum! Welcome to SiratSync - your complete Islamic lifestyle companion. How can I help you with your spiritual journey today? 🤲",
+    "struggling": "Don't be hard on yourself, dear brother/sister. The fact that you care shows your iman is alive. Start small - even one prayer on time is a victory. I believe in you! 💪",
+    "consistent": "MashaAllah! Your consistency is inspiring. Remember, the most beloved deeds to Allah are those done regularly, even if small. Keep going! 🌟",
+    "praise": "Alhamdulillah! May Allah accept your efforts and keep you steadfast.",
+    "farewell": "JazakAllah khair for using SiratSync. May Allah keep us all consistent. Come back anytime! 🤲",
+    "error": "I'm having trouble processing that. Could you rephrase your question? I can help with Salah, Quran, Hadith, Duas, Habit tracking, Learn Salah, Shahadat, Qibla, and more."
+  },
+  "troubleshooting": [
+    {"issue": "Prayer times incorrect", "solution": "Check location permissions are enabled. Go to Settings → Prayer Times → Refresh Location. You can also manually set your city and adjust calculation method."},
+    {"issue": "Adhan not playing", "solution": "Check notification permissions, phone sound settings, and that Adhan is enabled in Prayer Times settings."},
+    {"issue": "Qibla compass not working", "solution": "Calibrate compass by moving phone in figure-8 motion. Ensure no magnetic interference nearby. For best accuracy, use online mode."},
+    {"issue": "App crashing", "solution": "Update to latest version, clear app cache, or reinstall. If persists, contact support at lonekaiser04@gmail.com."},
+    {"issue": "Quran not loading offline", "solution": "Download Quran data first while online. Go to Quran → Settings → Download for Offline."},
+    {"issue": "Habit data not saving", "solution": "Ensure you're logged in. Check internet connection for cloud sync. Data also saves locally."},
+    {"issue": "Aurad-e-Fatiha not loading", "solution": "Download Aurad-e-Fatiha first while online. Go to Aurad section and tap download. After download, it works offline."}
+  ],
+  "future_features": [
+    {
+      "name": "SiratSync Advanced AI Assistant",
+      "description": "AI-powered Islamic assistant that understands your struggles and provides personalized guidance based on your consistency.",
+      "status": "Coming Soon"
+    },
+    {
+      "name": "Voice-based Duas",
+      "description": "Voice recognition for duas with pronunciation guide and audio feedback.",
+      "status": "Planned"
+    },
+    {
+      "name": "Smart Habit Coaching",
+      "description": "Personalized recommendations based on your consistency patterns.",
+      "status": "Planned"
+    },
+    {
+      "name": "Quran Memorization Tracker",
+      "description": "Track hifz progress with spaced repetition system.",
+      "status": "Planned"
+    },
+    {
+      "name": "Prayer Journal",
+      "description": "Reflect on your prayers and track khushu (concentration) levels.",
+      "status": "Planned"
+    },
+    {
+      "name": "More Hadith Books",
+      "description": "Additional authentic Hadith collections including Sunan Abu Dawud, Jami at-Tirmidhi, and more.",
+      "status": "In Progress"
+    }],
+  "quran_translations": [
+    {
+      "language": "Kashmiri",
+      "description": "The Holy Qur'an with Kashmiri translation - available now on SiratSync for the Kashmiri community. Every verse can be understood in the language of your heart.",
+      "availability": "Full Quran with Kashmiri translation and Tafsir",
+      "feature": "Read. Understand. Connect. The Holy Qur'an with English, Urdu & Kashmiri translations."
+    },
+    {
+      "language": "English",
+      "description": "Sahih International English translation of the Holy Quran",
+      "features": ["Clear modern English", "Alongside Arabic text", "Easy to understand"]
+    },
+    {
+      "language": "Urdu",
+      "description": "Urdu translation of the Holy Quran for Urdu-speaking Muslims",
+      "features": ["Authentic Urdu translation", "Alongside Arabic text"]
+    }
+  ],
+  
+  "ramadan_mode": [
+    {
+      "feature": "Ramadan Mode Overview",
+      "description": "SiratSync Ramadan Update helps you stay consistent and connected during the blessed month.",
+      "features": [
+        "Ramadan Duas collection",
+        "Dua for Fasting: 'Wa biswami ghadim nawaytu min shahr Ramadan' (I intend to keep the fast for month of Ramadan)",
+        "Dua for Iftar: 'Dhahabaa al-zama' wa abtalat al-urooq wa thabata al-ajrin sha Allah' (Thirst is gone, the veins are moistened and the reward is certain if Allah wills)",
+        "Ramadan Clock with countdown",
+        "Today's Progress tracker",
+        "Ibadah tracking during Ramadan",
+        "Streaks during Ramadan",
+        "Suhoor and Iftar timings",
+        "Fasting reminders",
+        "Early prayer notifications",
+        "Prayer countdown"
+      ]
+    },
+    {
+      "feature": "Ramadan Duas",
+      "description": "Special collection of duas for Ramadan including fasting and iftar duas",
+      "duas": [
+        {
+          "name": "Dua for Fasting (Suhoor)",
+          "arabic": "وَبِصَوْمِ غَدٍ نَّوَيْتُ مِنْ شَهْرِ رَمَضَانَ",
+          "transliteration": "Wa bisawmi ghadin nawaytu min shahri Ramadan",
+          "meaning": "I intend to keep the fast for the month of Ramadan"
+        },
+        {
+          "name": "Dua for Iftar (Breaking Fast)",
+          "arabic": "ذَهَبَ الظَّمَأُ وَابْتَلَّتِ الْعُرُوقُ وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ",
+          "transliteration": "Dhahabad-dhama'u wabtallatil-'urooqu wa thabatal-ajru insha'Allah",
+          "meaning": "Thirst is gone, the veins are moistened, and the reward is certain if Allah wills"
+        }
+      ]
+    }
+  ],
+
+  "community_features": [
+    {
+      "feature": "Community Overview",
+      "description": "A more peaceful community experience on SiratSync - connect with purpose and discover peace.",
+      "capabilities": [
+        "Create and share posts",
+        "Follow other users",
+        "Like and comment on posts",
+        "Receive notifications for follows, likes, and comments",
+        "View leaderboard",
+        "Personalized feed",
+        "Search users and posts",
+        "Share Islamic reminders and reflections"
+      ]
+    },
+    {
+      "feature": "Community Guidelines",
+      "description": "A peaceful Islamic social space built with proper adab and safety.",
+      "safety_features": [
+        "Report system for inappropriate content",
+        "Strict moderation",
+        "Clear community guidelines",
+        "Safe and respectful environment"
+      ]
+    },
+    {
+      "feature": "Notifications",
+      "description": "Stay connected with your community through notifications",
+      "types": [
+        "All notifications",
+        "Unread notifications",
+        "Follows alerts",
+        "Likes alerts",
+        "Comments alerts"
+      ]
+    }
+  ],
+
+  "qibla_finder": [
+    {
+      "feature": "Qibla Finder Overview",
+      "description": "Perfectly aligned Qibla direction finder for accurate prayer direction",
+      "capabilities": [
+        "Real-time Qibla direction compass",
+        "Shows distance to Kaaba (e.g., 3641 km from Rajouri)",
+        "Shows alignment accuracy (e.g., 0.1° from North)",
+        "Cardinal directions (N, E, W, S)",
+        "Works offline after calibration",
+        "High accuracy compass"
+      ],
+      "display_info": "Shows distance to Kaaba, perfect alignment status, and degrees from North"
+    }
+  ],
+
+  "multilingual_support": [
+    {
+      "feature": "Multi-Language Support",
+      "description": "Customize your experience with multi-language support",
+      "languages": [
+        {"name": "English", "code": "en"},
+        {"name": "اردو", "code": "ur", "display": "Urdu"},
+        {"name": "العربية", "code": "ar", "display": "Arabic"},
+        {"name": "فارسی", "code": "fa", "display": "Persian"},
+        {"name": "Malay", "code": "ms"}
+      ],
+      "interface": "Select Language option in Preferences"
+    }
+  ],
+
+  "prayer_reminders": [
+    {
+      "feature": "Prayer Reminders",
+      "description": "Never miss your prayer again with smart, accurate prayer reminders - always on time.",
+      "features": [
+        "Maghrib prayer reminder: 'Maghrib prayer is in 20 minutes. Prepare for prayer.'",
+        "Adhan alerts for all five daily prayers",
+        "Optional early reminders (e.g., 10 minutes before)",
+        "Accurate prayer times based on location"
+      ]
+    }
+  ],
+
+  "habit_tracker_details": [
+    {
+      "feature": "Weekly Progress Visualization",
+      "description": "Visualize your weekly progress with SiratSync's habit tracker",
+      "features": [
+        "Track 4 habits (Quran, Tasbih, Dua, etc.)",
+        "Weekly progress view: All, Active, Broken, Milestones",
+        "Daily Inspiration with Hadith",
+        "Today's Progress: 0/4 habits completed",
+        "Build your Jannah brick by brick with good habits"
+      ],
+      "daily_inspiration": "The best among you are those who have the best manners and character. — Prophet Muhammad (Sahih Bukhari)"
+    }
+  ],
+
+  "app_versions": [
+    {
+      "version": "3.1.0",
+      "build": "Build 17",
+      "features": ["Quran translations", "Hadith collections", "Prayer times", "Community features"]
+    }
+  ],
+
+  "settings_features": [
+    {
+      "category": "Account & Security",
+      "items": [
+        "Account Settings - Manage your profile and personal information",
+        "Security - Email verification and login activity"
+      ]
+    },
+    {
+      "category": "Customization",
+      "items": [
+        "Preferences - Themes, notifications, and app behavior",
+        "Theme options: Light Mode and Dark Mode",
+        "Language selection: English, اردو, فارسی, العربية, Malay"
+      ]
+    },
+    {
+      "category": "Support & Legal",
+      "items": [
+        "Help & Support - Get help, send feedback, and contact us",
+        "Support Us - Support our development and help us improve",
+        "Legal - Terms, privacy policy, and licenses",
+        "App Information - Version info and about us"
+      ]
+    }
+  ],
+
+  "tasbih_features": [
+    {
+      "feature": "Digital Tasbih",
+      "description": "Tasbih & Dua Collection: Your Spiritual Companion",
+      "features": [
+        "Digital Tasbih counter for Allahu Akbar (34 times preset)",
+        "Track dhikr counts",
+        "Dua collection with morning and evening supplications",
+        "Dua for waking up: 'Alhamdulillah alladhi ahyana ba'da ma amatana wa ilayhin nushur'",
+        "Dua for wearing garment: 'Alhamdulillah alladhi kasani hadha (ath-thawb) wa razaqanihi min ghayri hawlin minni wa la quwwah'"
+      ]
+    }
+  ],
+
+  "verse_of_day": [
+    {
+      "feature": "Verse of the Day",
+      "description": "Daily Quranic verse for inspiration",
+      "verse": "وَفِي عَادٍ إِذْ أَرْسَلْنَا عَلَيْهِمُ الرِّيحَ الْعَقِيمَ",
+      "translation": "And in [the story of] 'Ad, when We sent against them the barren wind",
+      "reference": "Quran 51:41"
+    }
+  ],
+
+  "download_links": [
+    {
+      "store": "Google Play",
+      "url": "https://play.google.com/store/apps/details?id=com.islamic.streakly",
+      "website": "https:siratsync.in",
+      "domain": "www.siratsync.in"
+    }
+  ],
+
+  "user_stats_display": [
+    {
+      "feature": "User Profile Stats",
+      "description": "User profiles show following count and followers",
+      "example": "Kaiser Mohiuddin - Founder of SiratSync, Kashmir - 19 Followers"
+    }
+  ],
+
+  "reflections": [
+    {
+      "author": "Xygum Abbas",
+      "content": "A person is hidden under his tongue. The tongue of a wise man is behind his heart, while a fool's heart is behind his tongue.",
+      "source": "Hazrat Ali (R.A)"
+    },
+    {
+      "author": "Malik Qasim",
+      "content": "Hearts find peace only in the remembrance of Allah. Keep your tongue busy with dhikr, and your soul will stay light and calm."
+    },
+    {
+      "author": "Kaiser Mohiuddin",
+      "content": "Alhamdulillah, working every day to improve #SiratSync so it becomes a source of benefit for all of us. May Allah accept our efforts and guide us on the straight path."
+    }
+  ],
+
+  "quick_actions_navigation": [
+    {
+      "tab": "Ibadah",
+      "description": "View and track your worship activities"
+    },
+    {
+      "tab": "Streaks",
+      "description": "View your consistency streaks"
+    },
+    {
+      "tab": "Home",
+      "description": "Main dashboard with today's progress"
+    },
+    {
+      "tab": "Community",
+      "description": "Social feed with Islamic content"
+    },
+    {
+      "tab": "More",
+      "description": "Additional settings and features"
+    }
+  ],
+
+  "faqs_new": [
+    {
+      "question": "Does SiratSync have Kashmiri Quran translation?",
+      "answer": "Yes! The Kashmiri translation of the Holy Qur'an is now available on SiratSync. Every verse can be understood in the language of your heart, alongside English and Urdu translations."
+    },
+    {
+      "question": "What languages does SiratSync support?",
+      "answer": "SiratSync supports 5 languages: English, Urdu (اردو), Arabic (العربية), Persian (فارسی), and Malay. More languages coming soon!"
+    },
+    {
+      "question": "How accurate is the Qibla finder?",
+      "answer": "The Qibla finder is highly accurate showing distance to Kaaba and alignment degrees (e.g., 0.1° from North). Calibrate your compass for best results."
+    },
+    {
+      "question": "What Ramadan features does SiratSync have?",
+      "answer": "Ramadan Mode includes: Suhoor/Iftar timings, special Ramadan Duas (including fasting and iftar duas), Ramadan clock, fasting reminders, early prayer notifications, prayer countdown, and progress tracking."
+    },
+    {
+      "question": "Can I get prayer reminders?",
+      "answer": "Yes! SiratSync sends smart, accurate prayer reminders. For example: 'Maghrib prayer is in 20 minutes. Prepare for prayer.' Never miss your prayer again."
+    },
+    {
+      "question": "How do I track my habits?",
+      "answer": "Go to Home tab to see Today's Progress. You can track habits like Quran reading, Tasbih, Dua, and more. View weekly progress with All, Active, Broken, and Milestones filters."
+    },
+    {
+      "question": "What is the SiratSync community?",
+      "answer": "A peaceful Islamic social space where you can share Islamic reminders, reflections, and beneficial posts. Follow users, like and comment, and receive notifications. All content is moderated for safety."
+    },
+    {
+      "question": "How do I change app language?",
+      "answer": "Go to Settings → Preferences → Select Language. Choose from English, Urdu, Arabic, Persian, or Malay."
+    },
+    {
+      "question": "Where can I download SiratSync?",
+      "answer": "Download from Google Play or visit www.siratsync.in SiratSync is currently not available on app store "
+    },
+    {
+      "question": "What is the daily inspiration feature?",
+      "answer": "The Habit Tracker shows Daily Inspiration with authentic Hadith, like 'The best among you are those who have the best manners and character.' — Prophet Muhammad (Sahih Bukhari)"
+    }
+  ]
+}
