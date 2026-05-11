@@ -14,7 +14,7 @@ venv.bak/
 .env
 .env.local
 .env.*.
-
+.env.*.local
 
 # Large data files
 app/data/quran_indexed_final.json
