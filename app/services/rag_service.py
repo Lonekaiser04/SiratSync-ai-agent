@@ -1062,26 +1062,26 @@ class RAGKnowledge:
                     f"• Juz: **{meta.get('juz', 'N/A')}**"
                 )
         
-        if any(p in ql for p in ["longest surah", "longest chapter", "longest surat","most verses surah","most verses chapter","surah with most verses"]):
-            longest = max(self.quran_data, key=lambda s: len(s.get("array", [])))
-            vc = longest.get("_metadata", {}).get("verse_count", len(longest.get("array", [])))
-            return (
-                f"📊 **Longest Surah: {longest.get('name_en')} ({longest.get('name_translation')})**\n\n"
-                f"📖 **Surah Al-Baqarah (The Cow)** is widely recognized in Islamic scholarship as the longest chapter of "
-                f"the Holy Quran. Revealed in Madinah, it is also the second surah in the mushaf order. "
-                f"It encompasses a wide range of legal, theological, and moral teachings, including rulings on "
-                f"prayer, fasting, charity (zakah), pilgrimage (Hajj), marriage, divorce, and financial transactions.\n\n"
-                f"📜 **Notable Verses:**\n"
-                f"• **Ayat al-Kursi (2:255)** — The Verse of the Throne, describing Allah's majesty\n"
-                f"• **Ayat al-Dayn (2:282)** — The longest single verse in the Quran\n\n"
-                f"📊 **Statistics:**\n"
-                f"• Verses (Ayat): **{vc}**\n"
-                f"• Words: **{longest.get('words', 'N/A'):,}**\n"
-                f"• Letters: **{longest.get('letters', 'N/A'):,}**\n"
-                f"• Revelation: **{longest.get('type_en', '').capitalize()}**\n"
-                f"• Juz: **{longest.get('_metadata', {}).get('juz', 'N/A')}**\n\n"
-                f"📌 _Surah Al-Baqarah spans approximately 2.5 Juz (parts)._"
-            )
+            if any(p in ql for p in ["longest surah", "longest chapter", "longest surat","most verses surah","most verses chapter","surah with most verses"]):
+                longest = max(self.quran_data, key=lambda s: len(s.get("array", [])))
+                vc = longest.get("_metadata", {}).get("verse_count", len(longest.get("array", [])))
+                return (
+                    f"📊 **Longest Surah: {longest.get('name_en')} ({longest.get('name_translation')})**\n\n"
+                    f"📖 **Surah Al-Baqarah (The Cow)** is widely recognized in Islamic scholarship as the longest chapter of "
+                    f"the Holy Quran. Revealed in Madinah, it is also the second surah in the mushaf order. "
+                    f"It encompasses a wide range of legal, theological, and moral teachings, including rulings on "
+                    f"prayer, fasting, charity (zakah), pilgrimage (Hajj), marriage, divorce, and financial transactions.\n\n"
+                    f"📜 **Notable Verses:**\n"
+                    f"• **Ayat al-Kursi (2:255)** — The Verse of the Throne, describing Allah's majesty\n"
+                    f"• **Ayat al-Dayn (2:282)** — The longest single verse in the Quran\n\n"
+                    f"📊 **Statistics:**\n"
+                    f"• Verses (Ayat): **{vc}**\n"
+                    f"• Words: **{longest.get('words', 'N/A'):,}**\n"
+                    f"• Letters: **{longest.get('letters', 'N/A'):,}**\n"
+                    f"• Revelation: **{longest.get('type_en', '').capitalize()}**\n"
+                    f"• Juz: **{longest.get('_metadata', {}).get('juz', 'N/A')}**\n\n"
+                    f"📌 _Surah Al-Baqarah spans approximately 2.5 Juz (parts)._"
+                )
 
         if any(p in ql for p in ["longest verse", "longest ayah", "longest ayat"]):
             self._load_quran_data()
