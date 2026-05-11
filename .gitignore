@@ -13,7 +13,16 @@ venv.bak/
 # Environment variables 
 .env
 .env.local
-.env.*.local
+.env.*.
+
+
+# Large data files
+app/data/quran_indexed_final.json
+app/data/knowledge.json
+
+# Compiled bytecode 
+*.pyc
+*.pyo
 
 # IDE files
 .vscode/
