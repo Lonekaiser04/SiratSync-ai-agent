@@ -261,7 +261,7 @@ class RAGKnowledge:
         if nickname_result:
             return nickname_result
 
-        followup = self._handle_followup(q, ql)
+        followup = self._handle_followup(q, ql, user_id="default")
         if followup:
             return followup
 
@@ -274,7 +274,7 @@ class RAGKnowledge:
             candidate = _SURAH_SPELLING_MAP.get(snv_name.group(1).strip(), snv_name.group(1).strip())
             surah = self.get_surah_by_name(candidate)
             if surah:
-                self._update_surah_context(surah)
+                self._update_surah_context(surah, user_id="default")
                 return self._handle_verse_reference_query(surah["id"], int(snv_name.group(2)))
 
         verse_ref = self._extract_verse_ref(ql)
@@ -289,7 +289,7 @@ class RAGKnowledge:
         if snv:
             surah = self.get_surah_by_name(snv.group(1).strip())
             if surah:
-                self._update_surah_context(surah)
+                self._update_surah_context(surah, user_id="default")
                 return self._handle_verse_reference_query(surah["id"], int(snv.group(2)))
 
         snum = re.search(r"\bsurah\s+(\d{1,3})\b", ql)
@@ -298,7 +298,7 @@ class RAGKnowledge:
             if 1 <= sid <= 114:
                 for s in self.quran_data:
                     if s.get("id") == sid:
-                        self._update_surah_context(s)
+                        self._update_surah_context(s, user_id="default")
                         return self._handle_surah_summary_query(s.get("name_en", ""))
 
         plain_surah = re.search(r"^(?:surah|surat)\s+([a-z]+(?:[\s\-][a-z]+)*)$", ql.strip())
@@ -801,6 +801,10 @@ class RAGKnowledge:
                         phrase = " ".join(words[i:j])
                         if len(phrase) > 2:
                             phrases.append(phrase)
+
+                for kw in meta_kws:
+                    if kw in expanded:
+                        vs += 10
                 
                 for phrase in phrases:
                     for t in v.get("topics", []):
@@ -1057,154 +1061,154 @@ class RAGKnowledge:
                     f"• Revelation: **{s.get('type_en', '').capitalize()}**\n"
                     f"• Juz: **{meta.get('juz', 'N/A')}**"
                 )
+        
+        if any(p in ql for p in ["longest surah", "longest chapter", "longest surat","most verses surah","most verses chapter","surah with most verses"]):
+            longest = max(self.quran_data, key=lambda s: len(s.get("array", [])))
+            vc = longest.get("_metadata", {}).get("verse_count", len(longest.get("array", [])))
+            return (
+                f"📊 **Longest Surah: {longest.get('name_en')} ({longest.get('name_translation')})**\n\n"
+                f"📖 **Surah Al-Baqarah (The Cow)** is widely recognized in Islamic scholarship as the longest chapter of "
+                f"the Holy Quran. Revealed in Madinah, it is also the second surah in the mushaf order. "
+                f"It encompasses a wide range of legal, theological, and moral teachings, including rulings on "
+                f"prayer, fasting, charity (zakah), pilgrimage (Hajj), marriage, divorce, and financial transactions.\n\n"
+                f"📜 **Notable Verses:**\n"
+                f"• **Ayat al-Kursi (2:255)** — The Verse of the Throne, describing Allah's majesty\n"
+                f"• **Ayat al-Dayn (2:282)** — The longest single verse in the Quran\n\n"
+                f"📊 **Statistics:**\n"
+                f"• Verses (Ayat): **{vc}**\n"
+                f"• Words: **{longest.get('words', 'N/A'):,}**\n"
+                f"• Letters: **{longest.get('letters', 'N/A'):,}**\n"
+                f"• Revelation: **{longest.get('type_en', '').capitalize()}**\n"
+                f"• Juz: **{longest.get('_metadata', {}).get('juz', 'N/A')}**\n\n"
+                f"📌 _Surah Al-Baqarah spans approximately 2.5 Juz (parts)._"
+            )
+
+        if any(p in ql for p in ["longest verse", "longest ayah", "longest ayat"]):
+            self._load_quran_data()
             
-            if any(p in ql for p in ["longest surah", "longest chapter", "longest surat","most verses surah","most verses chapter","surah with most verses"]):
-                longest = max(self.quran_data, key=lambda s: len(s.get("array", [])))
-                vc = longest.get("_metadata", {}).get("verse_count", len(longest.get("array", [])))
+            longest_verse = self.get_verse_by_reference(2, 282)
+            
+            if longest_verse:
+                arabic_normalized = re.sub(r'[\u064B-\u065F\u0670]', '', longest_verse.get('arabic', ''))
+                arabic_length = len(arabic_normalized.strip())
+                
                 return (
-                    f"📊 **Longest Surah: {longest.get('name_en')} ({longest.get('name_translation')})**\n\n"
-                    f"📖 **Surah Al-Baqarah (The Cow)** is widely recognized in Islamic scholarship as the longest chapter of "
-                    f"the Holy Quran. Revealed in Madinah, it is also the second surah in the mushaf order. "
-                    f"It encompasses a wide range of legal, theological, and moral teachings, including rulings on "
-                    f"prayer, fasting, charity (zakah), pilgrimage (Hajj), marriage, divorce, and financial transactions.\n\n"
-                    f"📜 **Notable Verses:**\n"
-                    f"• **Ayat al-Kursi (2:255)** — The Verse of the Throne, describing Allah's majesty\n"
-                    f"• **Ayat al-Dayn (2:282)** — The longest single verse in the Quran\n\n"
+                    f"📖 **The Longest Verse in the Holy Quran:**\n\n"
+                    f"**{longest_verse['surah_name']} ({longest_verse['surah_translation']}) "
+                    f"— {longest_verse['surah_id']}:{longest_verse['verse_id']}**\n\n"
+                    f"📝 **Ayat al-Dayn (آيَة ٱلدَّيْن — The Verse of Debt)** is widely recognized in Islamic scholarship as "
+                    f"the longest verse in the Quran. It provides detailed guidance on financial transactions, "
+                    f"contracts, witnesses, and the importance of documenting debts. This verse reflects Islam's "
+                    f"comprehensive approach to social justice and economic ethics.\n\n"
+                    f"🔤 **Arabic Text:**\n{longest_verse['arabic']}\n\n"
+                    f"**English Translation:**\n_{longest_verse['english']}_\n\n"
                     f"📊 **Statistics:**\n"
-                    f"• Verses (Ayat): **{vc}**\n"
-                    f"• Words: **{longest.get('words', 'N/A'):,}**\n"
-                    f"• Letters: **{longest.get('letters', 'N/A'):,}**\n"
-                    f"• Revelation: **{longest.get('type_en', '').capitalize()}**\n"
-                    f"• Juz: **{longest.get('_metadata', {}).get('juz', 'N/A')}**\n\n"
-                    f"📌 _Surah Al-Baqarah spans approximately 2.5 Juz (parts)._"
+                    f"• Approximate character count (without diacritics): **{arabic_length:,}**\n"
+                    f"• Appears in: **Juz 3**\n\n"
+                    f"📌 _This verse spans nearly a full page in most standard mushafs and covers Islamic principles "
+                    f"of contracts, witnesses, and financial integrity in extensive detail._"
                 )
+            else:
+                return "📖 Verse 2:282 (Ayat al-Dayn) is widely recognized in Islamic scholarship as the longest verse. Please verify data availability."
 
-            if any(p in ql for p in ["longest verse", "longest ayah", "longest ayat"]):
-                self._load_quran_data()
-                
-                longest_verse = self.get_verse_by_reference(2, 282)
-                
-                if longest_verse:
-                    arabic_normalized = re.sub(r'[\u064B-\u065F\u0670]', '', longest_verse.get('arabic', ''))
-                    arabic_length = len(arabic_normalized.strip())
-                    
-                    return (
-                        f"📖 **The Longest Verse in the Holy Quran:**\n\n"
-                        f"**{longest_verse['surah_name']} ({longest_verse['surah_translation']}) "
-                        f"— {longest_verse['surah_id']}:{longest_verse['verse_id']}**\n\n"
-                        f"📝 **Ayat al-Dayn (آيَة ٱلدَّيْن — The Verse of Debt)** is widely recognized in Islamic scholarship as "
-                        f"the longest verse in the Quran. It provides detailed guidance on financial transactions, "
-                        f"contracts, witnesses, and the importance of documenting debts. This verse reflects Islam's "
-                        f"comprehensive approach to social justice and economic ethics.\n\n"
-                        f"🔤 **Arabic Text:**\n{longest_verse['arabic']}\n\n"
-                        f"**English Translation:**\n_{longest_verse['english']}_\n\n"
-                        f"📊 **Statistics:**\n"
-                        f"• Approximate character count (without diacritics): **{arabic_length:,}**\n"
-                        f"• Appears in: **Juz 3**\n\n"
-                        f"📌 _This verse spans nearly a full page in most standard mushafs and covers Islamic principles "
-                        f"of contracts, witnesses, and financial integrity in extensive detail._"
-                    )
-                else:
-                    return "📖 Verse 2:282 (Ayat al-Dayn) is widely recognized in Islamic scholarship as the longest verse. Please verify data availability."
+        if any(p in ql for p in ["shortest verse", "shortest ayah", "shortest ayat"]):
+            self._load_quran_data()
+            
+            verses_by_length = []
+            for s in self.quran_data:
+                for v in s.get("array", []):
+                    arabic_text = v.get("ar", "").strip()
+                    if not arabic_text:
+                        continue
+                    arabic_normalized = re.sub(r'[\u064B-\u065F\u0670]', '', arabic_text)
+                    verses_by_length.append({
+                        "surah_name": s.get("name_en", ""),
+                        "surah_translation": s.get("name_translation", ""),
+                        "surah_id": s.get("id"),
+                        "verse_id": v.get("id"),
+                        "english": v.get("en", ""),
+                        "arabic": arabic_text,
+                        "length": len(arabic_normalized.strip())
+                    })
+            
+            verses_by_length.sort(key=lambda x: x["length"])
+            
+            if not verses_by_length:
+                return "📖 Could not determine the shortest verse."
+            
+            top_shortest = verses_by_length[:5]
+            
+            result = "📖 **Scholarly Discussion: The Shortest Verse in the Holy Quran**\n\n"
+            result += "📌 **Important Note:** There is no universal scholarly consensus on what constitutes "
+            result += "the \"shortest verse.\" The determination depends on the criteria used:\n\n"
+            result += "• **Counting individual Arabic letters**\n"
+            result += "• **Counting complete words**\n"
+            result += "• **Whether to count disconnected letters (al-Ḥurūf al-Muqaṭṭaʿāt) as verses**\n\n"
+            
+            result += f"**By Character Count — Shortest Verses:**\n\n"
+            
+            for i, v in enumerate(top_shortest[:5], 1):
+                result += f"**{i}.** {v['surah_name']} ({v['surah_translation']}) "
+                result += f"— {v['surah_id']}:{v['verse_id']}\n"
+                result += f"🔤 {v['arabic']}\n"
+                result += f"{v['english']}_\n"
+                result += f"📊 Characters: {v['length']}\n\n"
+            
+            result += "📌 **Scholarly Perspectives:**\n\n"
+            result += "• Some scholars consider **Surah Al-Kawthar (108:1)** — \"إِنَّا أَعْطَيْنَاكَ الْكَوْثَرَ\" — "
+            result += "the shortest verse by word count (one complete sentence).\n\n"
+            result += "• Others note **Surah Ar-Rahman (55:64)** — \"مُدْهَامَّتَانِ\" — as consisting of "
+            result += "a single Arabic word.\n\n"
+            result += "• The **Muqaṭṭaʿāt letters** (e.g., الم, طه, يس, حم) found at the beginning of 29 surahs "
+            result += "are considered by many scholars to be independent verses, which would make them "
+            result += "among the shortest segments in the Quran.\n\n"
+            result += "📌 **Conclusion:** The definition of \"shortest verse\" varies based on scholarly methodology. "
+            result += "The verses listed above are among the briefest by character length, but this classification "
+            result += "is one of several valid interpretive approaches."
+            
+            return result
 
-            if any(p in ql for p in ["shortest verse", "shortest ayah", "shortest ayat"]):
-                self._load_quran_data()
-                
-                verses_by_length = []
-                for s in self.quran_data:
-                    for v in s.get("array", []):
-                        arabic_text = v.get("ar", "").strip()
-                        if not arabic_text:
-                            continue
-                        arabic_normalized = re.sub(r'[\u064B-\u065F\u0670]', '', arabic_text)
-                        verses_by_length.append({
-                            "surah_name": s.get("name_en", ""),
-                            "surah_translation": s.get("name_translation", ""),
-                            "surah_id": s.get("id"),
-                            "verse_id": v.get("id"),
-                            "english": v.get("en", ""),
-                            "arabic": arabic_text,
-                            "length": len(arabic_normalized.strip())
-                        })
-                
-                verses_by_length.sort(key=lambda x: x["length"])
-                
-                if not verses_by_length:
-                    return "📖 Could not determine the shortest verse."
-                
-                top_shortest = verses_by_length[:5]
-                
-                result = "📖 **Scholarly Discussion: The Shortest Verse in the Holy Quran**\n\n"
-                result += "📌 **Important Note:** There is no universal scholarly consensus on what constitutes "
-                result += "the \"shortest verse.\" The determination depends on the criteria used:\n\n"
-                result += "• **Counting individual Arabic letters**\n"
-                result += "• **Counting complete words**\n"
-                result += "• **Whether to count disconnected letters (al-Ḥurūf al-Muqaṭṭaʿāt) as verses**\n\n"
-                
-                result += f"**By Character Count — Shortest Verses:**\n\n"
-                
-                for i, v in enumerate(top_shortest[:5], 1):
-                    result += f"**{i}.** {v['surah_name']} ({v['surah_translation']}) "
-                    result += f"— {v['surah_id']}:{v['verse_id']}\n"
-                    result += f"🔤 {v['arabic']}\n"
-                    result += f"{v['english']}_\n"
-                    result += f"📊 Characters: {v['length']}\n\n"
-                
-                result += "📌 **Scholarly Perspectives:**\n\n"
-                result += "• Some scholars consider **Surah Al-Kawthar (108:1)** — \"إِنَّا أَعْطَيْنَاكَ الْكَوْثَرَ\" — "
-                result += "the shortest verse by word count (one complete sentence).\n\n"
-                result += "• Others note **Surah Ar-Rahman (55:64)** — \"مُدْهَامَّتَانِ\" — as consisting of "
-                result += "a single Arabic word.\n\n"
-                result += "• The **Muqaṭṭaʿāt letters** (e.g., الم, طه, يس, حم) found at the beginning of 29 surahs "
-                result += "are considered by many scholars to be independent verses, which would make them "
-                result += "among the shortest segments in the Quran.\n\n"
-                result += "📌 **Conclusion:** The definition of \"shortest verse\" varies based on scholarly methodology. "
-                result += "The verses listed above are among the briefest by character length, but this classification "
-                result += "is one of several valid interpretive approaches."
-                
-                return result
-
-            if any(p in ql for p in ["total", "whole quran", "entire quran", "quran total", "quran statistics"]):
-                total_v = sum(len(s.get("array", [])) for s in self.quran_data)
-                total_w = sum(s.get("words", 0) for s in self.quran_data)
-                total_l = sum(s.get("letters", 0) for s in self.quran_data)
-                
-                makki_count = sum(1 for s in self.quran_data if s.get("type_en", "").lower() == "meccan")
-                madani_count = sum(1 for s in self.quran_data if s.get("type_en", "").lower() == "medinan")
-                
-                return (
-                    f"📊 **The Holy Quran — Overview and Statistics**\n\n"
-                    f"📖 The Quran (القُرْآن) is the central religious text of Islam and"
-                    f"the verbatim word of Allah (God) as revealed to Prophet Muhammad ﷺ through the Angel "
-                    f"Jibreel (Gabriel). Its revelation spanned approximately 23 years, beginning in 610 CE.\n\n"
-                    f"📊 **Structure:**\n"
-                    f"• Surahs (Chapters): **114**\n"
-                    f"  - Makki (Meccan): {makki_count}\n"
-                    f"  - Madani (Medinan): {madani_count}\n"
-                    f"• Verses (Ayat): **{total_v:,}**\n"
-                    f"• Words: **{total_w:,}**\n"
-                    f"• Letters: **{total_l:,}**\n"
-                    f"• Juz (Parts): **30**\n"
-                    f"• Hizb (Half-Juz sections): **60**\n"
-                    f"• Manzil (Stages for weekly recitation): **7**\n"
-                    f"• Ruku' (Thematic sections): **540**\n\n"
-                    f"📜 **Key Reference Points:**\n"
-                    f"• First revelation: **Surah Al-'Alaq (96:1-5)**\n"
-                    f"• Last revelation: **Surah Al-Ma'idah (5:3)and 2:281** mong commonly cited views \n"
-                    f"• Longest surah: **Al-Baqarah (2)** — 286 verses\n"
-                    f"• Shortest surah: **Al-Kawthar (108)** — 3 verses\n"
-                    f"• Longest verse: **Ayat al-Dayn (2:282)**\n"
-                    f"• Bismillah (بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ): Appears **114** times\n"
-                    f"  - At the beginning of 113 surahs (all except Surah At-Tawbah)\n"
-                    f"  - Once within **Surah An-Naml (27:30)** as part of Prophet Sulayman's letter\n\n"
-                    f"📌 **Important Considerations:**\n"
-                    f"• Verse counts may slightly differ across regional recitations (Qira'at)\n"
-                    f"• Word and letter counts are based on the Uthmani script and exclude diacritical marks\n"
-                    f"• Classification of verses as Makki or Madani follows majority scholarly opinion\n\n"
-                    f"🔍 _For detailed study of specific surahs or verses, ask: \"Tell me about surah [name]\" "
-                    f"or \"Show me verse [number]:[number]\"_"
-                )
-            return None
+        if any(p in ql for p in ["total", "whole quran", "entire quran", "quran total", "quran statistics"]):
+            total_v = sum(len(s.get("array", [])) for s in self.quran_data)
+            total_w = sum(s.get("words", 0) for s in self.quran_data)
+            total_l = sum(s.get("letters", 0) for s in self.quran_data)
+            
+            makki_count = sum(1 for s in self.quran_data if s.get("type_en", "").lower() == "meccan")
+            madani_count = sum(1 for s in self.quran_data if s.get("type_en", "").lower() == "medinan")
+            
+            return (
+                f"📊 **The Holy Quran — Overview and Statistics**\n\n"
+                f"📖 The Quran (القُرْآن) is the central religious text of Islam and"
+                f"the verbatim word of Allah (God) as revealed to Prophet Muhammad ﷺ through the Angel "
+                f"Jibreel (Gabriel). Its revelation spanned approximately 23 years, beginning in 610 CE.\n\n"
+                f"📊 **Structure:**\n"
+                f"• Surahs (Chapters): **114**\n"
+                f"  - Makki (Meccan): {makki_count}\n"
+                f"  - Madani (Medinan): {madani_count}\n"
+                f"• Verses (Ayat): **{total_v:,}**\n"
+                f"• Words: **{total_w:,}**\n"
+                f"• Letters: **{total_l:,}**\n"
+                f"• Juz (Parts): **30**\n"
+                f"• Hizb (Half-Juz sections): **60**\n"
+                f"• Manzil (Stages for weekly recitation): **7**\n"
+                f"• Ruku' (Thematic sections): **540**\n\n"
+                f"📜 **Key Reference Points:**\n"
+                f"• First revelation: **Surah Al-'Alaq (96:1-5)**\n"
+                f"• Last revelation: **Surah Al-Ma'idah (5:3)and 2:281** mong commonly cited views \n"
+                f"• Longest surah: **Al-Baqarah (2)** — 286 verses\n"
+                f"• Shortest surah: **Al-Kawthar (108)** — 3 verses\n"
+                f"• Longest verse: **Ayat al-Dayn (2:282)**\n"
+                f"• Bismillah (بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ): Appears **114** times\n"
+                f"  - At the beginning of 113 surahs (all except Surah At-Tawbah)\n"
+                f"  - Once within **Surah An-Naml (27:30)** as part of Prophet Sulayman's letter\n\n"
+                f"📌 **Important Considerations:**\n"
+                f"• Verse counts may slightly differ across regional recitations (Qira'at)\n"
+                f"• Word and letter counts are based on the Uthmani script and exclude diacritical marks\n"
+                f"• Classification of verses as Makki or Madani follows majority scholarly opinion\n\n"
+                f"🔍 _For detailed study of specific surahs or verses, ask: \"Tell me about surah [name]\" "
+                f"or \"Show me verse [number]:[number]\"_"
+            )
+        return None
 
     def _handle_surah_summary_query(self, surah_name: str, user_id: str = "default") -> str:
         summary = self.get_surah_summary(surah_name)
@@ -1456,7 +1460,7 @@ class RAGKnowledge:
         "and daily practice easier, smarter, and more meaningful."
             )
 
-        if "features" in ql or "what can it do" in ql or "what can you do" in ql:
+        if any(p in ql for p in ["siratsync features", "app features", "what can it do", "what can you do"]):
             return (
                 "✨ **SiratSync Features:**\n"
                 "📖 Quran with multiple translations (English / Kashmiri Tafsir / Urdu)\n"
