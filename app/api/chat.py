@@ -302,7 +302,7 @@ def _build_sources(
 
     # ── Case 3: Quick reply (app info, features, direct answers) ─────────────
     if was_quick_reply:
-        sources.a_SRC_KBppend()
+        sources.append(_SRC_KB) 
         return sources
 
     # ── Case 4: Knowledge base answered without LLM ───────────────────────────
