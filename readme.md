@@ -1,4 +1,4 @@
-# SiratSync AI Backend 🕌
+# SiratSync AI Backend
 
 An Islamic lifestyle AI assistant backend for the **SiratSync** app — helping Muslims stay consistent in Salah, Quran, Dhikr, and daily habits.
 
@@ -72,7 +72,7 @@ chatbotbackend/
 
 **1. Clone & install dependencies**
 ```bash
-git clone <repo-url>
+git clone https://github.com/lonekaiser04/siratsync-ai-backend.git
 cd chatbotbackend
 pip install -r requirements.txt
 ```
@@ -235,8 +235,17 @@ pytest tests/
 Test files cover: chat endpoint, Quran retrieval, RAG pipeline, and full integration (`test_all.py`).
 
 ---
+## License
 
+All Rights Reserved.
+
+Copyright (c) 2026 Kaiser Mohiuddin / SiratSync
+
+This repository is proprietary software shared for portfolio and viewing purposes only.
+Unauthorized copying, modification, distribution, or commercial use is strictly prohibited without explicit written permission.
+
+---
 ## Developer
 
 Built by **Kaiser Mohiuddin** — CS student & founder of SiratSync.
-📧 lonekaiser04@gmail.com
+For professional inquiries, connect via LinkedIn or official Website.
