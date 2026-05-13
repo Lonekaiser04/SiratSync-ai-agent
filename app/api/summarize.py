@@ -19,8 +19,6 @@ llm = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 @router.post("/summarize", response_model=SummarizeResponse)
 async def summarize_post(request: SummarizeRequest):
     try:
-        logger.info(f"Summarize request from {request.user_id}")
-
         content = request.post_content.strip()
 
         if len(content) < 30:
@@ -33,7 +31,6 @@ async def summarize_post(request: SummarizeRequest):
         cache_key = f"{SUMMARY_CACHE_PREFIX}{hashlib.md5(content.encode()).hexdigest()}"
         cached = cache.get(cache_key, request.user_id)
         if cached:
-            logger.info("⚡ Returning cached summary")
             data = json_module.loads(cached)
             return SummarizeResponse(**data)
 

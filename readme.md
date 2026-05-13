@@ -27,8 +27,6 @@ chatbotbackend/
 │   │   └── user.py              # GET/DELETE /user/{id} — session management
 │   ├── core/
 │   │   ├── config.py            # Centralized env config & constants
-│   │   ├── logging.py           # Logging setup
-│   │   └── security.py         # Security utilities
 │   ├── data/
 │   │   ├── knowledge.json       # Islamic content knowledge base
 │   │   └── quran_indexed_final.json  # Full Quran with translations
@@ -50,7 +48,6 @@ chatbotbackend/
 │   ├── utils/
 │   │   ├── cache.py             # In-memory response cache (TTL-based)
 │   │   ├── helpers.py           # Quick replies & feature responses
-│   │   └── validators.py        # Input validation utilities
 │   └── main.py                  # FastAPI app entry point
 ├── scripts/
 │   ├── cleanup_memory.py        # Purge inactive Redis sessions
@@ -63,6 +60,7 @@ chatbotbackend/
 │   └── test_rag.py
 ├── .render-build.sh             # Render.com build script
 ├── requirements.txt
+├── LICENSE
 └── README.md
 ```
 
