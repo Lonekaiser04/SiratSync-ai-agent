@@ -5,10 +5,10 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 
 class SourceItem(BaseModel):
-    type: str          # "quran", "knowledge_base", "ai_generated"
-    label: str         # Display name e.g. "Quran — Sahih International"
-    reference: Optional[str] = None   # e.g. "Al-Baqarah 2:255"
-    detail: Optional[str] = None      # extra info if needed
+    type: str          
+    label: str         
+    reference: Optional[str] = None   
+    detail: Optional[str] = None   
 
 class ChatResponse(BaseModel):
     reply:              str

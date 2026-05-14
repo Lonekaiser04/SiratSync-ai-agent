@@ -96,7 +96,6 @@ class MemoryManager:
                 active_key = f"sirat:active:{user_id}"
                 stats_key = f"sirat:stats:{user_id}"
                 
-                # 🚀 PIPELINE: Execute all Redis commands in ONE network round trip
                 pipe = self.redis.pipeline()
                 
                 # 1. Store message
@@ -328,5 +327,4 @@ class MemoryManager:
                 pass
         return {"fallback_sessions": len(self.fallback_sessions)}
     
-# Create singleton instance
 memory = MemoryManager()

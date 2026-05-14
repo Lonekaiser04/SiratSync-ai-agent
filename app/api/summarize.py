@@ -56,6 +56,7 @@ async def summarize_post(request: SummarizeRequest):
         logger.info(f" Summary: {result.summary_length} chars (from {result.original_length})")
         return result
 
+
     except Exception as e:
         logger.error(f"Summarize error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")

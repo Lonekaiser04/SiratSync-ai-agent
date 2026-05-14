@@ -239,15 +239,11 @@ class RAGKnowledge:
             return " ".join(parts)
         return str(obj)
 
-    # ═════════════════════════════════════════════════════════════════════════
     # PUBLIC: list_categories
-    # ═════════════════════════════════════════════════════════════════════════
     def list_categories(self) -> list[str]:
         return list(self.knowledge.keys())
 
-    # ═════════════════════════════════════════════════════════════════════════
     # PUBLIC: retrieve  (feeds {knowledge} in the system prompt)
-    # ═════════════════════════════════════════════════════════════════════════
     def retrieve(self, query: str, top_k: int = 4) -> str:
         self._load_quran_data()
         q  = query.strip()
@@ -265,7 +261,6 @@ class RAGKnowledge:
         if followup:
             return followup
 
-        # ✅ FIX 1: Handle "surah <name> verse <num>" pattern
         snv_name = re.search(
             r"(?:surah|surat)\s+([a-z][\w\s\-]{1,30}?)\s+(?:verse|ayat|ayah)\s+(\d{1,3})\b",
             ql,
@@ -342,9 +337,7 @@ class RAGKnowledge:
 
         return self._keyword_fallback(ql, top_k)
 
-    # ═════════════════════════════════════════════════════════════════════════
-    # PUBLIC: get_rag_data_for_llm
-    # ═════════════════════════════════════════════════════════════════════════
+
     def get_rag_data_for_llm(self, query: str, user_id: str = "default") -> Optional[str]:
         self._load_quran_data()
         ql = query.lower().strip()

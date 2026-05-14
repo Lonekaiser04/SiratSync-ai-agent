@@ -16,10 +16,14 @@ venv.bak/
 .env.*.
 .env.*.local
 
-# Large data files
-app/data/quran_indexed_final.json
-app/data/knowledge.json
 
+#tests files
+tests/test_all.py
+tests/test_chat.py
+tests/test_quran.py
+tests/test_rag.py
+
+tests/
 # Compiled bytecode 
 *.pyc
 *.pyo

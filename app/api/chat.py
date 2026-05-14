@@ -94,12 +94,10 @@ async def chat(request: ChatRequest):
             reply = quick_reply
             logger.info("⚡ Quick response used")
 
-        # ✅ PRIORITY: Always intercept verse/surah references — never let LLM handle these
         elif _is_verse_or_surah_query(message_lower, rag_service):
             reply = rag_service.retrieve(request.message, top_k=5)
             logger.info("📖 Verse/Surah RAG response used — LLM bypassed")
 
-        # ✅ Quran topic query — show exact verses + LLM explanation below
         elif rag_service._is_quran_topic_query(message_lower):
             reply = knowledge or rag_service.retrieve(request.message, top_k=5)
             logger.info("📚 Quran topic RAG response used")
@@ -266,24 +264,19 @@ def _build_sources(
     """
     sources = []
 
-    # ── Case 1: Specific verse or surah lookup ────────────────────────────────
     if is_verse_query:
-        # Arabic is always present for verse lookups
         if _has_arabic_text(reply):
             sources.append(_SRC_ARABIC)
-        # Only add translation sources if they actually appear in the reply
         if _has_english_translation(reply):
             sources.append(_SRC_ENGLISH)
         if _has_urdu_text(reply):
             sources.append(_SRC_URDU)
         if _has_kashmiri_text(reply):
             sources.append(_SRC_KASHMIRI)
-        # If nothing detected but it's a verse query, at least show Arabic + English
         if not sources:
             sources = [_SRC_ARABIC, _SRC_ENGLISH]
         return sources
 
-    # ── Case 2: Quran topic query (marriage, parents, etc.) ───────────────────
     if is_quran_topic and used_rag:
         if _has_arabic_text(reply):
             sources.append(_SRC_ARABIC)
@@ -293,24 +286,22 @@ def _build_sources(
             sources.append(_SRC_URDU)
         if _has_kashmiri_text(reply):
             sources.append(_SRC_KASHMIRI)
-        # AI explanation is added when topic query goes through LLM explanation
         sources.append(_SRC_AI)
         if not sources or sources == [_SRC_AI]:
-            # Fallback: topic was retrieved from KB, not verse data
             sources = [_SRC_KB, _SRC_AI]
         return sources
 
-    # ── Case 3: Quick reply (app info, features, direct answers) ─────────────
+    # Quick reply (app info, features, direct answers) ─────────────
     if was_quick_reply:
         sources.append(_SRC_KB) 
         return sources
 
-    # ── Case 4: Knowledge base answered without LLM ───────────────────────────
+    # Knowledge base answered without LLM ───────────────────────────
     if used_rag and not is_quran_topic:
         sources.append(_SRC_KB)
         sources.append(_SRC_AI)
         return sources
 
-    # ── Case 5: Pure LLM response ─────────────────────────────────────────────
+    # Pure LLM response ─────────────────────────────────────────────
     sources.append(_SRC_AI)
     return sources

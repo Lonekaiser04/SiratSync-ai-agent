@@ -149,9 +149,9 @@ Your job:
         )
         
         english_response = response.choices[0].message.content.strip()
-        logger.info(f"✅ English-only response generated ({len(english_response)} chars)")
+        logger.info(f"English-only response generated ({len(english_response)} chars)")
         return english_response
         
     except Exception as e:
-        logger.error(f"⚠️ LLM failed: {e}")
+        logger.error(f" LLM failed: {e}")
         return _format_rag_data_direct(rag_data)
