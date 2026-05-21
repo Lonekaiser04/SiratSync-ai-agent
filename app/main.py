@@ -12,6 +12,7 @@ from app.api.health import router as health_router
 from app.api.user import router as user_router
 from app.api.summarize import router as summarize_router
 from app.core.config import ALLOWED_ORIGINS
+from app.api.whatsapp import router as whatsapp_router
 
 load_dotenv()
 
@@ -33,6 +34,8 @@ app.include_router(chat_router)
 app.include_router(health_router)
 app.include_router(user_router)
 app.include_router(summarize_router)
+app.include_router(whatsapp_router)
+
 
 @app.on_event("startup")
 async def startup_event():
