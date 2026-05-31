@@ -1,95 +1,351 @@
+# import os
+# import httpx
+# import logging
+# from fastapi import APIRouter, Request, Response
+# from app.models.request_models import ChatRequest
+# from app.api.chat import chat  # using existing chat logic
+
+# router = APIRouter()
+# logger = logging.getLogger(__name__)
+
+# WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
+# PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID")
+# VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "siratsync_secret")
+
+# WHATSAPP_API_URL = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+
+
+# # ── Webhook verification (GET) — Meta calls this once when you register ──────
+# @router.get("/webhook/whatsapp")
+# async def verify_webhook(request: Request):
+#     params = dict(request.query_params)
+#     mode      = params.get("hub.mode")
+#     token     = params.get("hub.verify_token")
+#     challenge = params.get("hub.challenge")
+
+#     if mode == "subscribe" and token == VERIFY_TOKEN:
+#         logger.info("✅ WhatsApp webhook verified")
+#         return Response(content=challenge, media_type="text/plain")
+#     return Response(content="Forbidden", status_code=403)
+
+
+# # ── Incoming messages (POST) — Meta sends every user message here ─────────────
+# @router.post("/webhook/whatsapp")
+# async def receive_whatsapp_message(request: Request):
+#     body = await request.json()
+
+#     try:
+#         entry    = body["entry"][0]
+#         changes  = entry["changes"][0]
+#         value    = changes["value"]
+
+#         if "messages" not in value:
+#             return {"status": "ignored"}
+
+#         msg      = value["messages"][0]
+#         from_number = msg["from"]           # e.g. "919876543210"
+#         msg_type    = msg.get("type")
+
+#         if msg_type != "text":
+#             await send_whatsapp_message(from_number, "Sorry, I can only understand text messages right now. 🤲")
+#             return {"status": "non-text ignored"}
+
+#         user_text = msg["text"]["body"]
+#         logger.info(f"📱 WhatsApp message from {from_number}: {user_text}")
+
+#         chat_req = ChatRequest(
+#             user_id=from_number,      # use phone number as user_id
+#             message=user_text,
+#             user_name=from_number,
+#         )
+#         chat_response = await chat(chat_req)
+
+#         reply_text = chat_response.reply
+
+#         await send_whatsapp_message(from_number, reply_text)
+#         return {"status": "sent"}
+
+#     except (KeyError, IndexError) as e:
+#         logger.warning(f"⚠️ Could not parse webhook payload: {e}")
+#         return {"status": "parse_error"}
+
+
+# async def send_whatsapp_message(to: str, text: str):
+#     """Send a text message via WhatsApp Cloud API."""
+#     headers = {
+#         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+#         "Content-Type": "application/json",
+#     }
+#     payload = {
+#         "messaging_product": "whatsapp",
+#         "to": to,
+#         "type": "text",
+#         "text": {"body": text},
+#     }
+#     async with httpx.AsyncClient() as client:
+#         resp = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+#         if resp.status_code != 200:
+#             logger.error(f"❌ WhatsApp send failed: {resp.text}")
+
+
 import os
 import httpx
 import logging
-from fastapi import APIRouter, Request, Response
+import asyncio
+from datetime import datetime
+from fastapi import APIRouter, Request, Response, BackgroundTasks
 from app.models.request_models import ChatRequest
-from app.api.chat import chat  # using existing chat logic
+from app.api.chat import chat
 
-router = APIRouter()
+router = APIRouter(prefix="", tags=["WhatsApp"])
 logger = logging.getLogger(__name__)
 
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID")
-VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "siratsync_secret")
-
+# ── Configuration ─────────────────────────────────────────────────────────────
+WHATSAPP_TOKEN   = os.environ.get("WHATSAPP_TOKEN", "")
+PHONE_NUMBER_ID  = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+VERIFY_TOKEN     = os.environ.get("WHATSAPP_VERIFY_TOKEN", "siratsync_secret")
 WHATSAPP_API_URL = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+API_VERSION      = "v19.0"
+
+# ── Greeting & Help Messages ───────────────────────────────────────────────────
+WELCOME_MESSAGE = """🕌 *Assalamualaikum! Welcome to Sirat Assistant*
+
+I'm your AI-powered Islamic companion from *SiratSync* — the all-in-one Islamic lifestyle app.
+
+Here's what I can help you with:
+📖 *Quran* — Type a verse like _2:43_ or _Surah Fatiha_
+🕌 *Salah* — Prayer times & guidance
+📿 *Duas & Dhikr* — Daily supplications
+⭐ *Habits* — Ibadah tracking tips
+🧭 *Qibla* — Direction guidance
+🌙 *Ramadan* — Fasting & Suhoor tips
+
+Type *help* anytime to see this menu again.
+
+_جزاك الله خيرا_ 🤲"""
+
+HELP_MESSAGE = """📋 *Sirat Assistant — Help Menu*
+
+*Quran Lookup:*
+• Type _2:43_ → Surah Baqarah Verse 43
+• Type _Surah Fatiha_ → Full Surah
+• Type _Surah 1_ → By number
+
+*Ask Anything:*
+• _How do I perform Wudu?_
+• _What is the dua before sleeping?_
+• _I'm struggling with my prayers_
+
+*App Features:*
+• Type _features_ → See all SiratSync features
+• Type _download_ → Get the app
+
+⚠️ _This is an automated AI assistant._
+_Please do not use for personal conversations._
+
+_Powered by SiratSync_ 🕌"""
+
+UNSUPPORTED_MESSAGE = """⚠️ *Unsupported Message Type*
+
+I can only process *text messages* at the moment.
+
+Please type your question or a Quran verse like _2:43_ and I'll respond right away! 🤲"""
+
+ERROR_MESSAGE = """⚠️ *Something went wrong on my end.*
+
+Please try again in a moment.
+_JazakAllah khair for your patience._ 🤲"""
 
 
-# ── Webhook verification (GET) — Meta calls this once when you register ──────
-@router.get("/webhook/whatsapp")
+# ── Webhook Verification (GET) ────────────────────────────────────────────────
+@router.get("/webhook/whatsapp", summary="Meta webhook verification")
 async def verify_webhook(request: Request):
-    params = dict(request.query_params)
+    params    = dict(request.query_params)
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
-        logger.info("✅ WhatsApp webhook verified")
+        logger.info("✅ WhatsApp webhook verified successfully")
         return Response(content=challenge, media_type="text/plain")
+
+    logger.warning(f"⚠️ Webhook verification failed — token mismatch")
     return Response(content="Forbidden", status_code=403)
 
 
-# ── Incoming messages (POST) — Meta sends every user message here ─────────────
-@router.post("/webhook/whatsapp")
-async def receive_whatsapp_message(request: Request):
+# ── Incoming Messages (POST) ──────────────────────────────────────────────────
+@router.post("/webhook/whatsapp", summary="Receive WhatsApp messages")
+async def receive_whatsapp_message(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
 
     try:
-        entry    = body["entry"][0]
-        changes  = entry["changes"][0]
-        value    = changes["value"]
+        entry   = body["entry"][0]
+        changes = entry["changes"][0]
+        value   = changes["value"]
 
-        # Ignore status updates (delivered, read receipts)
+        # ── Ignore status updates (sent, delivered, read) ──────────────────
         if "messages" not in value:
             return {"status": "ignored"}
 
-        msg      = value["messages"][0]
-        from_number = msg["from"]           # e.g. "919876543210"
+        msg         = value["messages"][0]
+        from_number = msg["from"]
         msg_type    = msg.get("type")
+        msg_id      = msg.get("id", "")
+        timestamp   = msg.get("timestamp", "")
 
+        # ── Get contact name if available ──────────────────────────────────
+        contacts    = value.get("contacts", [])
+        user_name   = contacts[0]["profile"]["name"] if contacts else from_number
+
+        logger.info(f"📱 [{msg_type}] from {user_name} ({from_number}) at {_fmt_timestamp(timestamp)}")
+
+        # ── Mark message as read ───────────────────────────────────────────
+        background_tasks.add_task(mark_message_read, msg_id)
+
+        # ── Handle non-text messages ───────────────────────────────────────
         if msg_type != "text":
-            await send_whatsapp_message(from_number, "Sorry, I can only understand text messages right now. 🤲")
-            return {"status": "non-text ignored"}
+            await send_whatsapp_message(from_number, UNSUPPORTED_MESSAGE)
+            return {"status": "unsupported_type"}
 
-        user_text = msg["text"]["body"]
-        logger.info(f"📱 WhatsApp message from {from_number}: {user_text}")
+        user_text = msg["text"]["body"].strip()
 
-        # ── Call your existing /chat logic ────────────────────────────────────
+        # ── Handle special commands ────────────────────────────────────────
+        if _is_greeting(user_text):
+            await send_whatsapp_message(from_number, WELCOME_MESSAGE)
+            return {"status": "welcome_sent"}
+
+        if user_text.lower() in {"help", "menu", "start", "/help", "/start"}:
+            await send_whatsapp_message(from_number, HELP_MESSAGE)
+            return {"status": "help_sent"}
+
+        # ── Send typing indicator ──────────────────────────────────────────
+        background_tasks.add_task(send_typing_indicator, from_number)
+
+        # ── Process through AI chat engine ────────────────────────────────
         chat_req = ChatRequest(
-            user_id=from_number,      # use phone number as user_id
-            message=user_text,
-            user_name=from_number,
+            user_id   = from_number,
+            message   = user_text,
+            user_name = user_name,
         )
+
         chat_response = await chat(chat_req)
-
-        reply_text = chat_response.reply
-
-        # Optionally append suggestions as a menu
-        if chat_response.suggestions:
-            suggestions_str = "\n".join(f"• {s}" for s in chat_response.suggestions[:4])
-            reply_text += f"\n\n💡 *Quick Options:*\n{suggestions_str}"
+        reply_text    = _format_reply(chat_response)
 
         await send_whatsapp_message(from_number, reply_text)
+
+        logger.info(f"✅ Reply sent to {from_number} | Intent: {chat_response.intent} | Length: {len(reply_text)} chars")
         return {"status": "sent"}
 
     except (KeyError, IndexError) as e:
         logger.warning(f"⚠️ Could not parse webhook payload: {e}")
         return {"status": "parse_error"}
 
+    except Exception as e:
+        logger.error(f"❌ Unexpected error processing message: {e}", exc_info=True)
+        try:
+            await send_whatsapp_message(from_number, ERROR_MESSAGE)
+        except Exception:
+            pass
+        return {"status": "error"}
 
-async def send_whatsapp_message(to: str, text: str):
-    """Send a text message via WhatsApp Cloud API."""
+
+# ── Send Text Message ─────────────────────────────────────────────────────────
+async def send_whatsapp_message(to: str, text: str, retries: int = 2) -> bool:
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
+        "Content-Type":  "application/json",
     }
     payload = {
         "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": text},
+        "recipient_type":    "individual",
+        "to":                to,
+        "type":              "text",
+        "text":              {"body": text, "preview_url": False},
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
-        if resp.status_code != 200:
-            logger.error(f"❌ WhatsApp send failed: {resp.text}")
+
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+
+            if resp.status_code == 200:
+                return True
+
+            logger.error(f"❌ WhatsApp send failed (attempt {attempt + 1}): {resp.status_code} — {resp.text}")
+
+            if resp.status_code in {400, 401, 403}:
+                break  # Don't retry auth/bad request errors
+
+            if attempt < retries:
+                await asyncio.sleep(1.5 * (attempt + 1))  # Exponential backoff
+
+        except httpx.TimeoutException:
+            logger.warning(f"⏱️ WhatsApp API timeout (attempt {attempt + 1})")
+            if attempt < retries:
+                await asyncio.sleep(2)
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected error sending message: {e}")
+            break
+
+    return False
+
+
+# ── Mark Message as Read ──────────────────────────────────────────────────────
+async def mark_message_read(message_id: str):
+    if not message_id:
+        return
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "status":            "read",
+        "message_id":        message_id,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+    except Exception as e:
+        logger.debug(f"Could not mark message as read: {e}")
+
+
+# ── Typing Indicator ──────────────────────────────────────────────────────────
+async def send_typing_indicator(to: str):
+    """Simulate typing by sending a short delay — WhatsApp Cloud API doesn't
+    support native typing indicators, so we just add a brief pause."""
+    await asyncio.sleep(0.8)
+
+
+# ── Helper: Format AI Reply ───────────────────────────────────────────────────
+def _format_reply(chat_response) -> str:
+    reply = chat_response.reply or ERROR_MESSAGE
+
+    # Append motivational quote if present
+    if getattr(chat_response, "motivational_quote", None):
+        reply += f"\n\n✨ _{chat_response.motivational_quote}_"
+
+    # WhatsApp max message length is 4096 chars
+    if len(reply) > 4000:
+        reply = reply[:3997] + "..."
+
+    return reply
+
+
+# ── Helper: Detect Greeting ───────────────────────────────────────────────────
+def _is_greeting(text: str) -> bool:
+    greetings = {
+        "hi", "hello", "hey", "salam", "salaam",
+        "assalamualaikum", "assalamu alaikum", "السلام عليكم",
+        "start", "/start", "begin"
+    }
+    return text.lower().strip() in greetings
+
+
+# ── Helper: Format Timestamp ──────────────────────────────────────────────────
+def _fmt_timestamp(ts: str) -> str:
+    try:
+        return datetime.fromtimestamp(int(ts)).strftime("%H:%M:%S")
+    except Exception:
+        return ts
