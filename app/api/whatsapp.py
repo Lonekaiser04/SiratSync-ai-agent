@@ -1,4 +1,3 @@
-import os
 import hmac
 import json
 import hashlib
@@ -8,6 +7,9 @@ import asyncio
 from collections import OrderedDict
 from datetime import datetime
 from fastapi import APIRouter, Request, Response, BackgroundTasks
+from pydantic import ValidationError
+
+from app.core.config import settings
 from app.models.request_models import ChatRequest
 from app.api.chat import chat
 
@@ -16,11 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-WHATSAPP_TOKEN  = os.environ.get("WHATSAPP_TOKEN", "")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
-VERIFY_TOKEN    = os.environ.get("WHATSAPP_VERIFY_TOKEN", "siratsync_secret")
-APP_SECRET      = os.environ.get("WHATSAPP_APP_SECRET", "")
-API_VERSION     = os.environ.get("WHATSAPP_API_VERSION", "v19.0")
+WHATSAPP_TOKEN  = settings.WHATSAPP_TOKEN
+PHONE_NUMBER_ID = settings.WHATSAPP_PHONE_NUMBER_ID
+VERIFY_TOKEN    = settings.WHATSAPP_VERIFY_TOKEN
+APP_SECRET      = settings.WHATSAPP_APP_SECRET
+API_VERSION     = settings.WHATSAPP_API_VERSION
 
 WHATSAPP_API_URL = f"https://graph.facebook.com/{API_VERSION}/{PHONE_NUMBER_ID}/messages"
 
@@ -193,13 +195,18 @@ async def receive_whatsapp_message(request: Request, background_tasks: Backgroun
         background_tasks.add_task(send_typing_indicator, from_number)
 
         # ── AI Chat Engine ─────────────────────────────────────────────────
-        chat_req = ChatRequest(
-            user_id   = from_number,
-            message   = user_text,
-            user_name = user_name,
-        )
+        try:
+            chat_req = ChatRequest(
+                user_id   = f"whatsapp:{from_number}",
+                message   = user_text,
+                user_name = user_name,
+            )
+        except ValidationError as e:
+            logger.warning(f"⚠️ Invalid WhatsApp message rejected by validation: {e}")
+            await send_whatsapp_message(from_number, UNSUPPORTED_MESSAGE)
+            return {"status": "validation_error"}
 
-        chat_response = await chat(chat_req)
+        chat_response = await chat(chat_req, request)
         reply_text    = _format_reply(chat_response)
 
         await send_whatsapp_message(from_number, reply_text)

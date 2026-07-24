@@ -1,9 +1,20 @@
+# Core web framework
 fastapi==0.104.1
-uvicorn==0.24.0
-groq==0.4.2
-firebase-admin==6.4.0
-python-dotenv==1.0.0
+uvicorn[standard]==0.24.0
+pydantic==2.6.4
+
+# LLM client (AsyncGroq requires >=0.9.0; pinned to a modern stable release)
+groq==0.11.0
+
+# Environment / config
+python-dotenv==1.0.1
+
+# HTTP client (used for WhatsApp Cloud API calls)
 httpx==0.25.1
+
+# Redis (session memory, response cache, rate limiting)
 redis==5.0.1
 hiredis==2.2.3
+
+# Used by scripts/keep_alive.py
 requests==2.31.0

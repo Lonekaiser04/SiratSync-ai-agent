@@ -1,10 +1,53 @@
-# actions.py
-from typing import Dict, List, Optional
-from datetime import datetime
+"""
+Action suggestion engine: maps detected intent/sub-intent/sentiment to
+concrete in-app actions (reminders, habit prompts, duas, quick actions).
 
-def suggest_actions(intent: str, user_profile: dict, sub_intent: str = None, sentiment: str = "neutral") -> dict:
-    """Return actionable suggestions based on intent, user profile, and context"""
-    
+Note on hadith attributions: the short quotes returned by
+`get_motivational_quote` are not backed by a verified hadith database in
+this codebase (no hadith corpus is bundled here). They are included for
+general motivational framing only. Do not present these as a substitute
+for a citation-checked hadith source; a proper fix is to source these from
+a real, numbered hadith collection before relying on them for anything
+where authenticity matters.
+"""
+import random
+from datetime import datetime
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+_DEFAULT_TIMEZONE = "UTC"
+
+
+def _current_hour(user_timezone: Optional[str] = None) -> int:
+    """Local hour used for time-of-day suggestions (morning/evening adhkar).
+
+    Falls back to UTC when no user timezone is supplied or the supplied
+    value is invalid — using the *server's* local time here would be wrong
+    for a global user base (a server in one region has no relationship to
+    where the user actually is), so UTC is a safer neutral default than
+    `datetime.now()` with no timezone.
+    """
+    tz_name = user_timezone or _DEFAULT_TIMEZONE
+    try:
+        return datetime.now(ZoneInfo(tz_name)).hour
+    except Exception:
+        return datetime.now(ZoneInfo(_DEFAULT_TIMEZONE)).hour
+
+
+def suggest_actions(
+    intent: str,
+    user_profile: dict,
+    sub_intent: Optional[str] = None,
+    sentiment: str = "neutral",
+    user_timezone: Optional[str] = None,
+) -> dict:
+    """Return actionable suggestions based on intent, user profile, and context.
+
+    `user_timezone` should be an IANA timezone name (e.g. "Asia/Karachi")
+    if available from the client; when omitted, time-of-day suggestions
+    (morning/evening adhkar) default to UTC rather than server local time.
+    """
+
     actions = {
         "reminders": [],
         "habits": [],
@@ -13,7 +56,7 @@ def suggest_actions(intent: str, user_profile: dict, sub_intent: str = None, sen
         "encouragement": "",
         "quick_actions": []
     }
-    
+
     # Get user consistency level
     consistency = user_profile.get("consistency", "unknown")
     struggles = user_profile.get("struggles", [])
@@ -72,7 +115,7 @@ def suggest_actions(intent: str, user_profile: dict, sub_intent: str = None, sen
             })
         
         # Morning/evening reminder
-        current_hour = datetime.now().hour
+        current_hour = _current_hour(user_timezone)
         if current_hour < 12:
             actions["reminders"].append({
                 "type": "adhkar",
@@ -448,7 +491,8 @@ def suggest_actions(intent: str, user_profile: dict, sub_intent: str = None, sen
 
 
 def get_motivational_quote(consistency_level: str = "unknown") -> str:
-    """Return an Islamic motivational quote based on user's consistency"""
+    """Return a short Islamic motivational phrase based on the user's
+    consistency level. See module docstring re: hadith attribution caveat."""
     
     quotes = {
         "struggling": [
@@ -473,12 +517,11 @@ def get_motivational_quote(consistency_level: str = "unknown") -> str:
         ]
     }
     
-    import random
     key = consistency_level if consistency_level in quotes else "unknown"
     return random.choice(quotes[key])
 
 
-def get_quick_reply_suggestions(intent: str, sub_intent: str = None) -> List[str]:
+def get_quick_reply_suggestions(intent: str, sub_intent: Optional[str] = None) -> list[str]:
     """Get quick reply buttons based on intent"""
     
     suggestions = {

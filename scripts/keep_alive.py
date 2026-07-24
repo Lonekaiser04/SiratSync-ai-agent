@@ -1,23 +1,35 @@
-# keep_alive.py
-import requests
-import time
+"""
+Background keep-alive pinger for free-tier hosts (e.g. Render) that spin
+down on inactivity. Started from the app's lifespan handler when
+KEEP_ALIVE_ENABLED is set (RENDER=1 or KEEP_ALIVE=1 in the environment).
+"""
+import logging
 import threading
-import os
+import time
+
+import requests
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+_PING_INTERVAL_SECONDS = 600  # 10 minutes
+_PING_TIMEOUT_SECONDS = 5
 
 
-def keep_render_alive():
-    """Ping Render service every 10 minutes to prevent spin-down"""
-    url = os.environ.get("RENDER_URL", "https://siratsync-api.onrender.com/health")
-    
-    def ping():
+def keep_render_alive() -> None:
+    """Ping the health endpoint periodically to prevent spin-down."""
+    url = settings.RENDER_URL
+
+    def ping() -> None:
         while True:
             try:
-                response = requests.get(url, timeout=5)
-                print(f"Keep-alive ping: {response.status_code}")
-            except Exception as e:
-                print(f"Keep-alive failed: {e}")
-            time.sleep(600)  # 10 minutes
-    
-    thread = threading.Thread(target=ping, daemon=True)
+                response = requests.get(url, timeout=_PING_TIMEOUT_SECONDS)
+                logger.info("Keep-alive ping: %s", response.status_code)
+            except requests.RequestException as e:
+                logger.warning("Keep-alive ping failed: %s", e)
+            time.sleep(_PING_INTERVAL_SECONDS)
+
+    thread = threading.Thread(target=ping, daemon=True, name="keep-alive-pinger")
     thread.start()
-    print(" Keep-alive service started (pings every 10 min)")
+    logger.info("Keep-alive service started (pings every %ds)", _PING_INTERVAL_SECONDS)

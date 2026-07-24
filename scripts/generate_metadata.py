@@ -1,41 +1,55 @@
-# generate_rich_metadata.py
+"""
+generate_rich_metadata.py
+
+One-off offline data-prep script: builds enriched per-surah metadata
+(keywords, topics, sample queries) from a raw `quran_indexed.json` file.
+Not part of the running application — run manually when regenerating the
+bundled `app/data/quran_indexed_final.json`.
+
+Usage:
+    python -m scripts.generate_metadata [path/to/quran_indexed.json]
+
+If no path is given, the script searches a few likely locations relative
+to itself and the app's data directory, then falls back to prompting.
+"""
 import json
 import os
 import re
+import sys
 from collections import Counter
 
-def build_rich_quran_metadata():
+
+def _find_quran_file(explicit_path: str | None = None) -> str:
+    if explicit_path:
+        if os.path.exists(explicit_path):
+            return explicit_path
+        print(f"⚠️  Provided path does not exist: {explicit_path}")
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    search_paths = [
+        os.path.join(script_dir, "quran_indexed.json"),
+        os.path.join(script_dir, "..", "quran_indexed.json"),
+        os.path.join(script_dir, "..", "app", "data", "quran_indexed.json"),
+        os.path.join(script_dir, "..", "app", "data", "quran_indexed_final.json"),
+    ]
+
+    for path in search_paths:
+        if os.path.exists(path):
+            return path
+
+    print("❌ quran_indexed.json not found in expected locations.")
+    entered = input("Enter full path: ").strip().strip('"')
+    if not entered or not os.path.exists(entered):
+        raise FileNotFoundError(f"No valid quran_indexed.json path provided: {entered!r}")
+    return entered
+
+
+def build_rich_quran_metadata(source_path: str | None = None):
     """
     Automatically generate rich metadata for all 114 surahs
     with proper keywords, topics, and queries
     """
-    
-    # Find the file
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Look for quran_indexed.json
-    file_path = None
-    search_paths = [
-        os.path.join(script_dir, 'quran_indexed.json'),
-        os.path.join(script_dir, '..', 'quran_indexed.json'),
-    ]
-    
-    for path in search_paths:
-        if os.path.exists(path):
-            file_path = path
-            break
-    
-    if not file_path:
-        # Search recursively
-        for root, dirs, files in os.walk(r"C:\Users\HP\streakly"):
-            if "quran_indexed.json" in files:
-                file_path = os.path.join(root, "quran_indexed.json")
-                break
-    
-    if not file_path:
-        print("❌ quran_indexed.json not found!")
-        print("Enter full path: ", end="")
-        file_path = input().strip().strip('"')
+    file_path = _find_quran_file(source_path)
     
     print(f"📂 Using file: {file_path}")
     
@@ -215,4 +229,5 @@ def build_rich_quran_metadata():
     print(f"   3. Test with some queries")
 
 if __name__ == "__main__":
-    build_rich_quran_metadata()
+    cli_path = sys.argv[1] if len(sys.argv) > 1 else None
+    build_rich_quran_metadata(cli_path)

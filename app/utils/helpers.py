@@ -1,11 +1,31 @@
-import re
+"""
+Quick-reply and RAG-enrichment helpers used by the /chat endpoint.
+
+`get_quick_response` short-circuits the main LLM call for a large class of
+questions (direct verse/surah lookups, app-feature questions, follow-ups on
+prior context) — this is the single biggest cost/latency optimization in
+the pipeline, since it avoids an LLM round trip entirely for well-understood
+intents.
+
+`_call_llm_with_rag` handles the "broad Islamic topic" case: it still calls
+the LLM, but grounds it in retrieved Quran data rather than the model's
+own knowledge, and restricts the response to English to avoid the LLM
+attempting (and potentially getting wrong) Arabic/Urdu/Kashmiri text.
+"""
 import logging
+import os
+import re
 from typing import Optional
+
+from groq import AsyncGroq, GroqError
+
+from app.core.config import settings
 from app.services.rag_service import rag_service
 from app.services.memory_service import memory
-from app.services.action_service import get_motivational_quote
 
 logger = logging.getLogger(__name__)
+
+_rag_llm_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 def get_features_response() -> str:
     return """✨ **SiratSync Key Features**:
@@ -65,16 +85,20 @@ def _format_rag_data_direct(rag_data: str) -> str:
     lines_out.append("\n🤲 _Open the full surah in the app for complete tafsir._")
     return "\n".join(lines_out)
 
-def _call_llm_with_rag(user_query: str, rag_data: str, user_profile: dict) -> str:
-    from groq import Groq
-    import os
-    llm = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+async def _call_llm_with_rag(user_query: str, rag_data: str, user_profile: dict) -> str:
+    """Ground an LLM response in retrieved Quran data (English-only, to
+    avoid the model attempting non-English sacred text on its own)."""
     english_only = _extract_english_only(rag_data)
     if not english_only.strip():
         return "I couldn't find relevant information in English."
+
+    # user_query and rag_data both ultimately derive from user input /
+    # our own data; cap length defensively before building the prompt.
+    safe_query = (user_query or "")[: settings.MAX_MESSAGE_LENGTH]
+
     try:
-        response = llm.chat.completions.create(
-            model="llama-3.1-8b-instant",
+        response = await _rag_llm_client.chat.completions.create(
+            model=settings.GROQ_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -89,22 +113,31 @@ Your job:
 5. NEVER attempt to write Arabic, Urdu, or Kashmiri text
 6. Respond ONLY in English
 7. Only use the information provided. Do not add, question, or correct it
-8.End with: “📌 For accurate verse details, ask by reference (e.g., 94:5).”
+8. End with: "📌 For accurate verse details, ask by reference (e.g., 94:5)."
 """,
                 },
                 {
-                    "role": "user", 
-                    "content": f"Based on this information:\n\n{english_only}\n\nUser asks: {user_query}\n\nProvide a helpful English response:"
+                    "role": "user",
+                    "content": (
+                        f"Based on this information:\n\n{english_only}\n\n"
+                        f"User asks: {safe_query}\n\nProvide a helpful English response:"
+                    ),
                 },
             ],
             temperature=0.3,
             max_tokens=600,
+            timeout=settings.LLM_TIMEOUT_SECONDS,
         )
-        english_response = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content or not content.strip():
+            logger.warning("RAG-grounded LLM call returned empty content")
+            return _format_rag_data_direct(rag_data)
+
+        english_response = content.strip()
         logger.info(f"✅ English-only response generated ({len(english_response)} chars)")
         return english_response
-    except Exception as e:
-        logger.error(f"⚠️ LLM failed: {e}")
+    except GroqError as e:
+        logger.error(f"⚠️ RAG-grounded LLM call failed: {e}")
         return _format_rag_data_direct(rag_data)
 
 def _extract_english_only(rag_data: str) -> str:
@@ -140,7 +173,7 @@ def _extract_english_only(rag_data: str) -> str:
             english_lines.append(stripped)
     return "\n".join(english_lines)
 
-def get_quick_response(
+async def get_quick_response(
     message:       str,
     intent:        str,
     sub_intent:    Optional[str],
@@ -297,8 +330,9 @@ def get_quick_response(
             return rag_service._handle_similar_ayahs_query(sid, vid)
         elif any(p in message_lower for p in ["similar ayahs", "similar verses",
                                                "related ayahs", "similar"]):
-            ctx_sid = rag_service._get_user_context(user_id).get("last_surah_id")
-            ctx_vid = rag_service._get_user_context(user_id).get("last_verse_id")
+            _ctx = rag_service._get_user_context(user_id)
+            ctx_sid = _ctx.get("last_surah_id")
+            ctx_vid = _ctx.get("last_verse_id")
             if ctx_sid and ctx_vid:
                 logger.info(f"⚡ Similar ayahs from context {ctx_sid}:{ctx_vid}")
                 return rag_service._handle_similar_ayahs_query(ctx_sid, ctx_vid)
@@ -323,19 +357,32 @@ def get_quick_response(
             logger.info("⚡ Topic query — direct RAG (no LLM)")
             return direct_result
 
-        rag_data = rag_service.get_rag_data_for_llm(message)
+        rag_data = rag_service.get_rag_data_for_llm(message, user_id=user_id)
         if rag_data:
             logger.info("🤖 RAG data found → LLM enrichment")
-            return _call_llm_with_rag(message, rag_data, user_profile)
+            return await _call_llm_with_rag(message, rag_data, user_profile)
 
         logger.info("🤖 No RAG data for quran query → main LLM")
         return None
 
+    CORRECTION_WORDS = {"wrong", "incorrect", "not correct", "that's wrong", "mistake"}
+    if any(w in message_lower for w in CORRECTION_WORDS):
+        last_bot_message = memory.get_last_bot_message(user_id)
+        if last_bot_message:
+            logger.info("⚡ Correction acknowledgment — no LLM")
+            return (
+                "I apologize for the error. Could you please clarify what was wrong? "
+                "I want to make sure I give you accurate information. "
+                "For Quran-related questions, you can also check the Quran module "
+                "directly in the app for verified translations."
+            )
+
     CONFIRM = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "alright", "yes please"}
     if message_lower in CONFIRM:
         ctx = (last_question + " " + context).lower()
-        last_surah_name = rag_service._get_user_context(user_id).get("last_surah_name", "")
-        last_surah_id   = rag_service._get_user_context(user_id).get("last_surah_id")
+        user_ctx = rag_service._get_user_context(user_id)
+        last_surah_name = user_ctx.get("last_surah_name", "")
+        last_surah_id   = user_ctx.get("last_surah_id")
 
         if any(w in ctx for w in ["features", "learn more", "what can you do"]):
             return get_features_response()
@@ -356,17 +403,7 @@ def get_quick_response(
                 "Wonderful! The Quran module lets you read with English, "
                 "Kashmiri (with Tafsir), and Urdu translations. Works offline! 📖"
             )
-        
-        CORRECTION_WORDS = {"wrong", "incorrect", "not correct", "that's wrong", "mistake"}
-        if any(w in message_lower for w in CORRECTION_WORDS):
-            last_bot_message = memory.get_last_bot_message(user_id)
-            if last_bot_message:
-                return (
-                    "I apologize for the error. Could you please clarify what was wrong? "
-                    "I want to make sure I give you accurate information. "
-                    "For Quran-related questions, you can also check the Quran module "
-                    "directly in the app for verified translations."
-                )
+
         if any(w in ctx for w in ["habit", "consistent", "streak"]):
             return (
                 "Excellent! The Habit Tracker helps you build consistency in Salah, "
@@ -376,7 +413,9 @@ def get_quick_response(
         if last_surah_id and any(w in ctx for w in ["read", "verse", "show", "more"]):
             rag_data = rag_service.get_rag_data_for_llm(message, user_id=user_id)
             if rag_data:
-                return _call_llm_with_rag(f"tell me about surah {last_surah_name}", rag_data, user_profile)
+                return await _call_llm_with_rag(
+                    f"tell me about surah {last_surah_name}", rag_data, user_profile
+                )
 
     if intent == "greeting":
         return "Assalamu alaikum! Welcome to SiratSync. How can I help you with your Islamic journey today? 🤲"

@@ -13,8 +13,9 @@ venv.bak/
 # Environment variables 
 .env
 .env.local
-.env.*.
+.env.*
 .env.*.local
+!.env.example
 
 
 #tests files

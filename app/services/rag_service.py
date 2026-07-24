@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import threading
 from typing import Optional
 
 # ── Constants / Maps ──────────────────────────────────────────────────────────
@@ -145,6 +146,12 @@ class RAGKnowledge:
     with a full Quran index (quran_indexed_final.json).
     """
 
+    # Bound on in-memory conversation-context entries. Each user gets a tiny
+    # dict (3 fields), so this caps worst-case memory at a few MB even if
+    # cleanup falls behind, and prevents unbounded growth from anonymous/
+    # one-off user_ids (e.g. abuse or misconfigured clients).
+    _MAX_CONTEXT_USERS = 50_000
+
     def __init__(
         self,
         kb_path: str = "knowledge.json",
@@ -155,10 +162,18 @@ class RAGKnowledge:
         data_dir = os.path.join(current_dir, "..", "data")
 
         self.conversation_context: dict[str, dict] = {}
+        self._context_lock = threading.Lock()
 
         kb_full = os.path.join(data_dir, kb_path)
-        with open(kb_full, "r", encoding="utf-8") as f:
-            self.knowledge: dict = json.load(f)
+        try:
+            with open(kb_full, "r", encoding="utf-8") as f:
+                self.knowledge: dict = json.load(f)
+        except FileNotFoundError:
+            logger.error(f"❌ Knowledge base not found at {kb_full} — starting with empty KB")
+            self.knowledge = {}
+        except json.JSONDecodeError as exc:
+            logger.error(f"❌ Knowledge base is not valid JSON: {exc} — starting with empty KB")
+            self.knowledge = {}
 
         total = sum(
             len(v) if isinstance(v, list) else 1
@@ -168,22 +183,57 @@ class RAGKnowledge:
 
         self.quran_index_path = os.path.join(data_dir, quran_index_path)
         self.quran_data: Optional[list] = None
+        self._surah_by_id: dict[int, dict] = {}
+        self._surah_by_name: dict[str, dict] = {}
+        self._quran_load_lock = threading.Lock()
 
         self.search_index = self._build_search_index()
 
     def _get_user_context(self, user_id: str) -> dict:
-        if user_id not in self.conversation_context:
-            self.conversation_context[user_id] = {
-                "last_surah_id":   None,
-                "last_surah_name": None,
-                "last_verse_id":   None,
-            }
-        return self.conversation_context[user_id]
+        """Thread-safe accessor for a user's short-lived conversational
+        context (e.g. last surah discussed, for follow-up questions).
+
+        This is a best-effort, process-local cache — it intentionally does
+        NOT persist to Redis, since losing it just means a follow-up like
+        "read verse 5 of that" falls back to asking for clarification
+        rather than silently answering with someone else's context.
+        """
+        with self._context_lock:
+            if user_id not in self.conversation_context:
+                if len(self.conversation_context) >= self._MAX_CONTEXT_USERS:
+                    # Simple bounded-growth safeguard: drop the oldest
+                    # (in dict-insertion-order) half rather than growing
+                    # unbounded. This is a coarse eviction, acceptable
+                    # since entries are cheap to reconstruct.
+                    logger.warning(
+                        "conversation_context exceeded %s users — evicting oldest half",
+                        self._MAX_CONTEXT_USERS,
+                    )
+                    keys = list(self.conversation_context.keys())
+                    for k in keys[: len(keys) // 2]:
+                        del self.conversation_context[k]
+
+                self.conversation_context[user_id] = {
+                    "last_surah_id":   None,
+                    "last_surah_name": None,
+                    "last_verse_id":   None,
+                }
+            return self.conversation_context[user_id]
 
     # ── Quran loading ──────────────────────────────────────────────────────────
     def _load_quran_data(self) -> None:
+        """Lazily load the Quran index on first use, guarded against the
+        thundering-herd case where multiple concurrent first requests would
+        otherwise all pay the ~20MB JSON parse cost simultaneously."""
         if self.quran_data is not None:
             return
+
+        with self._quran_load_lock:
+            if self.quran_data is not None:  # re-check after acquiring lock
+                return
+            self._load_quran_data_locked()
+
+    def _load_quran_data_locked(self) -> None:
         try:
             with open(self.quran_index_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -244,7 +294,15 @@ class RAGKnowledge:
         return list(self.knowledge.keys())
 
     # PUBLIC: retrieve  (feeds {knowledge} in the system prompt)
-    def retrieve(self, query: str, top_k: int = 4) -> str:
+    def retrieve(self, query: str, top_k: int = 4, user_id: str = "default") -> str:
+        """Retrieve knowledge-base / Quran content relevant to `query`.
+
+        `user_id` scopes conversational context (e.g. "the surah we were
+        just discussing") so concurrent users don't leak follow-up context
+        into each other's sessions. Callers that omit it fall back to a
+        shared "default" bucket — acceptable only for single-user/dev use;
+        production call sites should always pass the real user id.
+        """
         self._load_quran_data()
         q  = query.strip()
         ql = q.lower()
@@ -257,7 +315,7 @@ class RAGKnowledge:
         if nickname_result:
             return nickname_result
 
-        followup = self._handle_followup(q, ql, user_id="default")
+        followup = self._handle_followup(q, ql, user_id=user_id)
         if followup:
             return followup
 
@@ -269,7 +327,7 @@ class RAGKnowledge:
             candidate = _SURAH_SPELLING_MAP.get(snv_name.group(1).strip(), snv_name.group(1).strip())
             surah = self.get_surah_by_name(candidate)
             if surah:
-                self._update_surah_context(surah, user_id="default")
+                self._update_surah_context(surah, user_id=user_id)
                 return self._handle_verse_reference_query(surah["id"], int(snv_name.group(2)))
 
         verse_ref = self._extract_verse_ref(ql)
@@ -284,7 +342,7 @@ class RAGKnowledge:
         if snv:
             surah = self.get_surah_by_name(snv.group(1).strip())
             if surah:
-                self._update_surah_context(surah, user_id="default")
+                self._update_surah_context(surah, user_id=user_id)
                 return self._handle_verse_reference_query(surah["id"], int(snv.group(2)))
 
         snum = re.search(r"\bsurah\s+(\d{1,3})\b", ql)
@@ -293,7 +351,7 @@ class RAGKnowledge:
             if 1 <= sid <= 114:
                 for s in self.quran_data:
                     if s.get("id") == sid:
-                        self._update_surah_context(s, user_id="default")
+                        self._update_surah_context(s, user_id=user_id)
                         return self._handle_surah_summary_query(s.get("name_en", ""))
 
         plain_surah = re.search(r"^(?:surah|surat)\s+([a-z]+(?:[\s\-][a-z]+)*)$", ql.strip())
@@ -301,6 +359,9 @@ class RAGKnowledge:
             candidate = _SURAH_SPELLING_MAP.get(plain_surah.group(1).strip(), plain_surah.group(1).strip())
             result = self._handle_surah_summary_query(candidate)
             if "couldn't find" not in result:
+                matched_surah = self.get_surah_by_name(candidate)
+                if matched_surah:
+                    self._update_surah_context(matched_surah, user_id=user_id)
                 return result
 
         juz_r = self._handle_juz_query(ql)
@@ -324,6 +385,9 @@ class RAGKnowledge:
                 candidate = _SURAH_SPELLING_MAP.get(m.group(1).strip(), m.group(1).strip())
                 result = self._handle_surah_summary_query(candidate)
                 if "couldn't find" not in result:
+                    matched_surah = self.get_surah_by_name(candidate)
+                    if matched_surah:
+                        self._update_surah_context(matched_surah, user_id=user_id)
                     return result
 
         if self._is_quran_topic_query(ql):
@@ -358,7 +422,7 @@ class RAGKnowledge:
             if 1 <= sid <= 114:
                 surah = self.get_surah_by_id(sid)
                 if surah:
-                    self._update_surah_context(surah)
+                    self._update_surah_context(surah, user_id=user_id)
                     summary = self.get_surah_summary(surah.get('name_en', ''))
                     if summary:
                         return self._format_surah_for_llm(summary)
@@ -367,7 +431,9 @@ class RAGKnowledge:
         if surah_name:
             summary = self.get_surah_summary(surah_name)
             if summary:
-                self._update_surah_context({"id": summary["id"], "name_en": summary["name"]})
+                self._update_surah_context(
+                    {"id": summary["id"], "name_en": summary["name"]}, user_id=user_id
+                )
                 return self._format_surah_for_llm(summary)
 
         result = self.search_quran_by_topic(query)
@@ -636,8 +702,7 @@ class RAGKnowledge:
         mw       = _meaningful_words(expanded)
         KNOWN_VERSE_MAPPINGS = {
             # ── Relationship & Family ──────────────────────────────────────
-            "rights of sisters":  [(4, 11), (4, 12), (4, 176), (4, 7)],
-            "sisters rights":     [(4, 11), (4, 12), (4, 176), (4, 7)],
+           
             "rights of women":    [(4, 19), (4, 32), (4, 34), (2, 228)],
             "women rights":       [(4, 19), (4, 32), (4, 34), (2, 228)],
             "women":              [(4, 19), (4, 34), (2, 228), (33, 35)],
@@ -656,6 +721,8 @@ class RAGKnowledge:
             "husband":            [(4, 34), (2, 228), (30, 21)],
             "wife":               [(4, 34), (2, 228), (30, 21), (4, 19)],
             "family":             [(17, 23), (4, 1), (30, 21), (2, 233)],
+            "rights of sisters":  [(4, 11), (4, 12), (4, 176), (4, 7)],
+            "sisters rights":     [(4, 11), (4, 12), (4, 176), (4, 7)],
             # ── Worship & Practice ────────────────────────────────────────
             "forgiveness":        [(39, 53), (3, 135), (4, 110), (42, 25)],
             "repentance":         [(39, 53), (3, 135), (4, 110), (2, 222)],
