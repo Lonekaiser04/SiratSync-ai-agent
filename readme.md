@@ -22,21 +22,21 @@ This backend powers Sirat Assistant across the SiratSync app and WhatsApp.
     </td>
     <td width="33%">
       <img src="screenshots/surah-info-query.jpeg" alt="Surah-level query returning statistics and notable verses" width="100%">
-      <p align="center"><em>Surah-level queries with stats</em></p>
+      <p align="center"><em>Surah-level queries with stats & notable verses</em></p>
     </td>
   </tr>
   <tr>
+    <td width="33%">
+      <img src="screenshots/community-feature.jpeg" alt="WhatsApp conversation explaining the Community feature" width="100%">
+      <p align="center"><em>Explaining app features conversationally (via WhatsApp)</em></p>
+    </td>
     <td width="33%">
       <img src="screenshots/post-summarization.jpeg" alt="AI-generated summary of a community post" width="100%">
       <p align="center"><em>AI post summarization in the Community feed</em></p>
     </td>
     <td width="33%">
       <img src="screenshots/whatsapp-verse-lookup.jpeg" alt="WhatsApp verse lookup with similar verses shown" width="100%">
-      <p align="center"><em>Explaining app features conversationally (via WhatsApp)</em></p>
-    </td>
-
-      <td width="33%">
-  <img src="screenshots/whatsapp-promo.jpeg" alt="SiratSync WhatsApp assistant promo graphic" width="33%">
+      <p align="center"><em>WhatsApp: verse lookup with similar-ayah suggestions</em></p>
     </td>
   </tr>
 </table>
@@ -51,6 +51,7 @@ This backend powers Sirat Assistant across the SiratSync app and WhatsApp.
 - **Redis** (Upstash or any standard Redis) — conversation memory, response cache, and rate limiting. Falls back to an in-process, single-worker store automatically if unconfigured (fine for local dev, **not** recommended for production)
 - **Pydantic v2** — request/response validation
 
+> **Note:** Firebase is *not* currently used anywhere in this codebase, despite being mentioned in earlier versions of this README. If you see `firebase-admin` referenced anywhere, it can be safely ignored/removed — no code imports it.
 
 ---
 
