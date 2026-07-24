@@ -136,31 +136,11 @@ A quick summary of the engineering decisions this repo is most worth reviewing f
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture Diagram
 
-```mermaid
-flowchart TD
-    Client["📱 Client<br/>(App · WhatsApp · Web)"] -->|HTTPS request| API["⚡ FastAPI Backend<br/>(async, Pydantic-validated)"]
+  <img src="screenshots/Architecture.png" alt="High Level Architectural Diagram of Sirat AI Assistant" width="100%">
+      <p align="center"><em>High Level Architectural Diagram</em></p>
 
-    API --> RateLimit["🚦 Rate Limiting<br/>(Redis sliding window)"]
-    RateLimit --> Cache{"💾 Response Cache<br/>hit?"}
-
-    Cache -- "Yes" --> Response
-    Cache -- "No" --> Intent["🧠 Intent Detection<br/>(rule-based classifier)"]
-
-    Intent --> RAG["📚 RAG Pipeline<br/>(Quran index + knowledge base)"]
-
-    RAG --> Decision{"Answerable from<br/>retrieved data alone?"}
-    Decision -- "Yes — direct/quick reply" --> Processing
-    Decision -- "No — needs generation" --> LLM["🤖 LLM<br/>(Groq · LLaMA 3.1 8B, async)"]
-
-    LLM --> Processing["🛠️ Response Processing<br/>(action suggestions, sources,<br/>motivational quote)"]
-    Processing --> Memory[("🗄️ Redis Memory<br/>chat history + user profile")]
-    Processing --> Response["📤 JSON Response<br/>(Pydantic-typed)"]
-
-    Memory -.->|read profile / context| Intent
-    Response -->|cache non-personalized replies| Cache
-```
 
 ### Component Breakdown
 
