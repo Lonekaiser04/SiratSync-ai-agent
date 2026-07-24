@@ -1,12 +1,74 @@
-# SiratSync AI Backend
+<div align="center">
 
-An Islamic lifestyle AI assistant backend for the **SiratSync** app — helping Muslims stay consistent in Salah, Quran, Dhikr, and daily habits.
+# 🕌 SiratSync AI Backend
 
-**🌐 Website:** [siratsync.in](https://siratsync.in) &nbsp;|&nbsp; **📱 Android:** [Get it on Google Play](https://play.google.com/store/apps/details?id=com.islamic.streakly) &nbsp;|&nbsp; **💬 WhatsApp:** [Chat with Sirat Assistant](https://wa.me/919541871382)
+**The conversational AI engine powering Sirat Assistant — an Islamic lifestyle companion helping Muslims stay consistent in Salah, Quran, Dhikr, and daily habits.**
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Redis](https://img.shields.io/badge/Redis-Cache%20%26%20Memory-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Groq](https://img.shields.io/badge/LLM-Groq%20LLaMA%203.1-F55036?logo=llama&logoColor=white)](https://groq.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
+[![Last Commit](https://img.shields.io/github/last-commit/Lonekaiser04/SiratSync-ai-agent)](https://github.com/Lonekaiser04/SiratSync-ai-agent/commits/main)
+[![Stars](https://img.shields.io/github/stars/Lonekaiser04/SiratSync-ai-agent?style=social)](https://github.com/Lonekaiser04/SiratSync-ai-agent/stargazers)
+
+**🌐 [Website](https://siratsync.in) · 📱 [Get it on Google Play](https://play.google.com/store/apps/details?id=com.islamic.streakly) · 💬 [Chat on WhatsApp](https://wa.me/919541871382)**
+
+</div>
 
 ---
 
-## Screenshots
+## 📖 Table of Contents
+
+> The links below use GitHub's standard heading-anchor format; if any don't jump correctly after pushing (emoji-prefixed anchors occasionally render inconsistently), the section is still easy to find by scrolling — headings are unchanged below.
+
+- [What is SiratSync AI?](#what-is-siratsync-ai)
+- [Why This Project?](#why-this-project)
+- [Screenshots](#screenshots)
+- [Project Highlights](#project-highlights)
+- [Features](#features)
+- [Architecture Overview](#architecture-overview)
+- [Performance & Optimizations](#performance--optimizations)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Authentication](#authentication)
+- [API Reference](#api-reference)
+- [Deployment (Render)](#deployment-rendercom)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## 🧭 What is SiratSync AI?
+
+**SiratSync AI Backend** is the FastAPI service behind **Sirat Assistant** — a conversational AI that answers Islamic questions, looks up Quranic verses across four languages, explains app features, and gently supports users in building consistent worship habits (Salah, Quran, Dhikr, fasting).
+
+**The problem it solves:** most "Islamic chatbots" are either a thin wrapper around a general-purpose LLM (prone to fabricating verses or citations) or a static FAQ bot with no conversational depth. SiratSync AI sits in between — it grounds responses in a real, structured Quran dataset and a curated knowledge base wherever possible, and only falls through to the LLM for open-ended conversation, with an explicit system prompt boundary against giving fatwas, medical/legal advice, or claims of unseen knowledge.
+
+**What makes it different, concretely:**
+- Direct verse/surah lookups are answered from **structured data, not generation** — no LLM call, no hallucination risk, sub-second response.
+- Conversational context (e.g. "show me verse 5 of that") is tracked **per user**, not globally — a subtle but important correctness property under concurrent load.
+- It's a **multi-channel** backend: the same intent/RAG/LLM pipeline serves the in-app chat, the Community post-summarizer, and a live WhatsApp bot through one codebase.
+
+---
+
+## 💡 Why This Project?
+
+This backend was built with a specific engineering philosophy: **prefer retrieval over generation wherever ground-truth data exists.** For a domain like Islamic content, an LLM confidently generating an incorrect verse or misattributed hadith isn't just a bug — it's a trust and accuracy problem. So the architecture is deliberately layered:
+
+1. Can this be answered from **structured data** (a specific verse, a known app feature)? → Answer directly, no LLM.
+2. Can this be answered by **retrieving** relevant Quran/knowledge-base content? → Ground the LLM in that retrieved context.
+3. Otherwise → let the LLM converse naturally, but within an explicit system-prompt boundary (no fatwas, no medical/legal advice, no claims of unseen knowledge, defer to scholars on serious matters).
+
+This also drives a practical benefit: a large share of real traffic (greetings, feature questions, direct verse lookups) never touches the LLM at all — which is both faster and cheaper than routing everything through generation.
+
+> **Honesty note (hadith content):** the app's prompts and UI reference Sahih al-Bukhari and Sahih Muslim, but **no hadith corpus is currently bundled in this repository** — only a handful of informally-attributed motivational quotes (no hadith number or chain). This is called out explicitly rather than hidden; see [Roadmap](#-roadmap).
+
+---
+
+## 📸 Screenshots
 
 This backend powers Sirat Assistant across the SiratSync app and WhatsApp.
 
@@ -43,142 +105,254 @@ This backend powers Sirat Assistant across the SiratSync app and WhatsApp.
 
 ---
 
-## Tech Stack
+## ⭐ Project Highlights
 
-- **FastAPI** — REST API framework
-- **Groq (LLaMA 3.1 8B Instant)**, called via the async client — LLM for conversational responses
-- **RAG** — JSON knowledge base + full Quran index for Islamic content & app features (no vector DB; retrieval is regex/keyword-based, see [RAG Retrieval](#rag-retrieval) below)
-- **Redis** (Upstash or any standard Redis) — conversation memory, response cache, and rate limiting. Falls back to an in-process, single-worker store automatically if unconfigured (fine for local dev, **not** recommended for production)
-- **Pydantic v2** — request/response validation
+A quick summary of the engineering decisions this repo is most worth reviewing for:
+
+| Area | What's notable |
+|---|---|
+| **Per-user context isolation** | Conversational follow-ups ("verse 5 of that") are scoped per `user_id`, with thread-safe locking — prevents cross-user context leakage under concurrent load. |
+| **Async LLM calls** | Uses `AsyncGroq` throughout so LLM calls don't block the FastAPI event loop under concurrent traffic. |
+| **Redis-backed rate limiting & caching** | Sliding-window rate limiting and response caching are Redis-backed when available, so limits and cache state stay correct across multiple workers/instances — not just single-process. |
+| **Graceful degradation** | Every Redis-dependent component (memory, cache, rate limiting) has an in-process fallback if Redis is unavailable, so local dev needs zero external services. |
+| **Real health checks** | `/health` performs an actual (short, cached) request to Groq — not just a truthy check on the client object — so it can genuinely detect an LLM outage. |
+| **Defense-in-depth on auth & input** | Internal endpoints require an API key (constant-time comparison), and user input is sanitized against common prompt-injection patterns before reaching the LLM. |
+| **Multi-channel from one pipeline** | The same intent detection → RAG → LLM pipeline serves in-app chat, community post summarization, and a live WhatsApp Cloud API integration. |
 
 ---
 
-## Project Structure
+## ✨ Features
 
+- 🕌 **Prayer guidance** — prayer-time queries, Adhan notification help, missed-prayer support
+- 📖 **Quran lookup** — full 114-surah index with English, Urdu, and Kashmiri (with Tafsir) translations, transliteration, and similar-ayah suggestions
+- 📚 **Hadith references** — Sahih al-Bukhari & Sahih Muslim referenced in prompts/UI *(see [honesty note](#-why-this-project) — no bundled corpus yet)*
+- 📿 **Duas, Adhkar & Tasbih** — situational duas, morning/evening adhkar, digital counter support
+- ⭐ **Habit tracking support** — consistency-aware responses based on a lightweight Redis-derived user profile
+- 🧭 **Qibla & Calendar** — directional and Hijri calendar query support
+- 🌙 **Ramadan Mode** — Suhoor/Iftar timing and fasting-related guidance
+- 👥 **Community AI tools** — AI-powered post summarization that preserves sacred text verbatim
+- 💬 **WhatsApp integration** — the full assistant, available via Meta's WhatsApp Cloud API
+- 🎯 **Learn Salah & Shahadat guide** — step-by-step guidance for new/practicing Muslims
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+flowchart TD
+    Client["📱 Client<br/>(App · WhatsApp · Web)"] -->|HTTPS request| API["⚡ FastAPI Backend<br/>(async, Pydantic-validated)"]
+
+    API --> RateLimit["🚦 Rate Limiting<br/>(Redis sliding window)"]
+    RateLimit --> Cache{"💾 Response Cache<br/>hit?"}
+
+    Cache -- "Yes" --> Response
+    Cache -- "No" --> Intent["🧠 Intent Detection<br/>(rule-based classifier)"]
+
+    Intent --> RAG["📚 RAG Pipeline<br/>(Quran index + knowledge base)"]
+
+    RAG --> Decision{"Answerable from<br/>retrieved data alone?"}
+    Decision -- "Yes — direct/quick reply" --> Processing
+    Decision -- "No — needs generation" --> LLM["🤖 LLM<br/>(Groq · LLaMA 3.1 8B, async)"]
+
+    LLM --> Processing["🛠️ Response Processing<br/>(action suggestions, sources,<br/>motivational quote)"]
+    Processing --> Memory[("🗄️ Redis Memory<br/>chat history + user profile")]
+    Processing --> Response["📤 JSON Response<br/>(Pydantic-typed)"]
+
+    Memory -.->|read profile / context| Intent
+    Response -->|cache non-personalized replies| Cache
 ```
+
+### Component Breakdown
+
+| Component | Responsibility |
+|---|---|
+| **Client** | The in-app chat UI, the WhatsApp webhook consumer, or any HTTP client — all speak the same JSON contract. |
+| **FastAPI Backend** | Async request handling, Pydantic v2 validation on every input, correlation-ID logging, CORS. |
+| **Rate Limiting** | Redis sorted-set sliding window (60 req/min default); falls back to a bounded in-process limiter if Redis is unavailable. |
+| **Response Cache** | Redis-backed (or local TTL fallback) cache for non-personalized queries — skips the LLM entirely on a cache hit. |
+| **Intent Detection** | Rule-based classifier producing a primary intent, sub-intent, sentiment, and urgency score — no LLM call needed. |
+| **RAG Pipeline** | Retrieves from the full Quran index (114 surahs, 4 languages) and a curated knowledge base; resolves direct verse/surah references without generation. |
+| **LLM** | Groq's `llama-3.1-8b-instant`, called asynchronously, only invoked when retrieval alone can't answer the query. |
+| **Response Processing** | Builds action suggestions, source attributions, and motivational content around the reply. |
+| **Redis Memory** | Stores the last 50 messages and a lightweight consistency profile per user, written via a single pipelined round trip. |
+
+---
+
+## ⚙️ Performance & Optimizations
+
+The following optimizations are implemented in the current codebase (no benchmark numbers are published yet — see note below):
+
+- ✅ **Async end-to-end** — FastAPI routes and the Groq client (`AsyncGroq`) are both async, so LLM calls don't block the event loop under concurrent requests.
+- ✅ **Retrieval-first routing** — direct verse/surah lookups and known app-feature questions are answered from structured data or quick-reply templates, skipping the LLM call entirely for a meaningful share of traffic.
+- ✅ **Redis-backed response cache** — repeated, non-personalized queries are served from cache (personalization is detected and excluded from caching automatically).
+- ✅ **Redis sliding-window rate limiting** — correct under multiple workers/instances, unlike a naive in-process counter.
+- ✅ **Pipelined Redis writes** — each chat turn's memory + stats update is a single pipelined round trip, not several sequential calls.
+- ✅ **Startup preloading** — the Quran index is loaded once at application startup, not lazily on a user's first request.
+- ✅ **Stateless request handling** — all per-request state lives in Redis (or an in-process fallback), so the API layer itself holds no session state and can scale horizontally behind a load balancer once Redis is shared.
+- ✅ **Strict request validation** — Pydantic v2 models reject empty/oversized input before any processing begins.
+
+> **On benchmarks:** this README intentionally does not include latency or throughput numbers, because none have been formally measured and published yet. If/when load testing is done, results will be added here as a table rather than prose claims.
+
+---
+
+## 🧱 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| API Framework | [FastAPI](https://fastapi.tiangolo.com/) (async) |
+| LLM Provider | [Groq](https://groq.com/) — `llama-3.1-8b-instant`, via the async SDK |
+| Data Validation | [Pydantic v2](https://docs.pydantic.dev/) |
+| Memory / Cache / Rate Limiting | [Redis](https://redis.io/) (Upstash-compatible), with in-process fallback |
+| Messaging Channel | WhatsApp Cloud API (Meta), HMAC-verified webhook |
+| Language | Python 3.11 |
+
+<details>
+<summary><strong>Why no vector database / LangChain?</strong> (click to expand)</summary>
+
+<br>
+
+Retrieval in this project is currently **regex and keyword-based** against a hand-curated knowledge base and the full Quran index — not embedding/vector search, and not built on LangChain. This is a deliberate current tradeoff: it works precisely for known topics and exact verse/surah references, but won't generalize to phrasings outside the curated topic list. Adding a semantic search layer (e.g. sentence-transformers over the existing verse/knowledge-base text) is the highest-leverage planned improvement — see [Roadmap](#-roadmap).
+
+</details>
+
+---
+
+## 📂 Project Structure
+
+```text
 chatbotbackend/
 ├── app/
 │   ├── api/
 │   │   ├── chat.py              # POST /chat — main chat endpoint
-│   │   ├── health.py            # GET /health — health check (pings Groq for real)
+│   │   ├── health.py            # GET /health — real Groq connectivity check
 │   │   ├── summarize.py         # POST /summarize — post summarization
-│   │   ├── user.py              # GET/DELETE /user/{id} — session management (auth-protected)
+│   │   ├── user.py              # GET/DELETE /user/{id} — auth-protected
 │   │   └── whatsapp.py          # WhatsApp Cloud API webhook
 │   ├── core/
-│   │   ├── config.py            # Centralized, validated env config (Settings class)
-│   │   └── security.py          # Internal API-key auth dependency + prompt-injection guards
+│   │   ├── config.py            # Centralized, validated env config
+│   │   └── security.py          # API-key auth + prompt-injection guards
 │   ├── data/
-│   │   ├── knowledge.json       # Islamic content / app-feature knowledge base
-│   │   └── quran_indexed_final.json  # Full Quran (114 surahs) with translations & metadata
+│   │   ├── knowledge.json               # Islamic content / app-feature KB
+│   │   └── quran_indexed_final.json     # Full Quran, 114 surahs, 4 languages
 │   ├── middleware/
-│   │   ├── rate_limit.py        # Redis sliding-window rate limiting (60 req/min default), in-process fallback
-│   │   └── request_logger.py    # Request/response logging with correlation IDs
-│   ├── models/
-│   │   ├── request_models.py    # ChatRequest, SummarizeRequest (Pydantic v2)
-│   │   └── response_models.py   # ChatResponse, SummarizeResponse, typed ActionsPayload
-│   ├── prompts/
-│   │   ├── system_prompt.py     # LLM system prompt template
-│   │   └── summarize_prompt.py  # Community post summarization prompt
+│   │   ├── rate_limit.py        # Redis sliding-window rate limiting
+│   │   └── request_logger.py    # Correlation-ID request logging
+│   ├── models/                  # Pydantic v2 request/response models
+│   ├── prompts/                 # LLM system + summarization prompts
 │   ├── services/
-│   │   ├── action_service.py    # Action suggestions & motivational quotes (timezone-aware)
+│   │   ├── action_service.py    # Action suggestions & motivational quotes
 │   │   ├── intent_service.py    # Rule-based intent & sentiment detection
 │   │   ├── memory_service.py    # Redis-backed session & user profiling
-│   │   └── rag_service.py       # Knowledge base + Quran retrieval (RAG)
+│   │   └── rag_service.py       # Knowledge base + Quran retrieval
 │   ├── utils/
-│   │   ├── cache.py             # Response cache — Redis-backed when available, local TTL fallback
-│   │   └── helpers.py           # Quick replies, feature responses, RAG-grounded LLM calls
-│   └── main.py                  # FastAPI app entry point (Quran index preloaded at startup)
+│   │   ├── cache.py             # Redis-backed response cache (local fallback)
+│   │   └── helpers.py           # Quick replies, RAG-grounded LLM calls
+│   └── main.py                  # FastAPI entry point (Quran preloaded at startup)
+├── screenshots/                 # README screenshots
 ├── scripts/
-│   ├── cleanup_memory.py        # Purge inactive Redis sessions — run on a schedule (not automatic)
-│   ├── generate_metadata.py     # Offline Quran metadata preprocessing (not part of the running app)
-│   └── keep_alive.py            # Render.com spin-down prevention (opt-in via env var)
-├── tests/                       # Add/restore your test suite here (see Testing section)
+│   ├── cleanup_memory.py        # Purge inactive Redis sessions (scheduled)
+│   ├── generate_metadata.py     # Offline Quran metadata preprocessing
+│   └── keep_alive.py            # Render.com spin-down prevention
+├── tests/                       # Test suite
+├── .env.example                 # Local environment template
 ├── .render-build.sh             # Render.com build script
-├── .env.example                 # Template for local .env — copy and fill in
 ├── requirements.txt
+├── runtime.txt                  # Pinned Python version (Render build)
 ├── LICENSE
 └── readme.md
 ```
 
 ---
 
-## Setup
+## 🚀 Quick Start
 
-**1. Clone & install dependencies**
+### Prerequisites
+
+- Python 3.11+
+- A [Groq API key](https://console.groq.com/)
+- (Optional, recommended for production) A Redis instance — [Upstash](https://upstash.com/) works well
+
+### 1. Clone & install
+
 ```bash
-git clone https://github.com/lonekaiser04/siratsync-ai-backend.git
-cd chatbotbackend
+git clone https://github.com/Lonekaiser04/SiratSync-ai-agent.git
+cd SiratSync-ai-agent
+
 python3 -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
-**2. Create your `.env` file**
+### 2. Configure environment
+
 ```bash
 cp .env.example .env
 ```
-Then fill in at minimum:
+
+Fill in at minimum:
+
 ```env
 GROQ_API_KEY=your_groq_api_key_here
+INTERNAL_API_KEY=              # generate your own — see Authentication below
 
-# Generate your own value for this — see "Authentication" below.
-INTERNAL_API_KEY=
-
-# Optional but recommended for anything beyond local single-process testing:
 REDIS_URL=rediss://default:<password>@<host>:6379
-# OR:
-UPSTASH_REDIS_HOST=your-host.upstash.io
-UPSTASH_REDIS_PORT=6379
-UPSTASH_REDIS_PASSWORD=your_password
-
-ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
-ENV=development
+# or individual Upstash vars — see .env.example for the full list
 ```
-See `.env.example` for the full list of optional settings (LLM tuning, rate limits, cache TTLs, WhatsApp config).
 
-**3. Run the server**
+### 3. Run
+
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**4. Verify it's working**
+### 4. Verify
 
-Visit `http://127.0.0.1:8000/docs` for the interactive API explorer, or check `http://127.0.0.1:8000/health` — a healthy response looks like:
-```json
-{"status": "healthy", "components": {"llm": "connected", ...}}
+Open **`http://127.0.0.1:8000/docs`** for the interactive API explorer, or check:
+
+```bash
+curl http://127.0.0.1:8000/health
 ```
-If `llm` shows `"error"`, double-check `GROQ_API_KEY`.
+
+> A healthy response looks like `{"status": "healthy", "components": {"llm": "connected", ...}}`. If `llm` shows `"error"`, double-check `GROQ_API_KEY`.
 
 ---
 
-## Authentication
+## 🔐 Authentication
 
-The `/user/{user_id}/summary` and `/user/{user_id}/session` endpoints expose per-user data and require an `X-API-Key` header matching `INTERNAL_API_KEY` from your `.env`.
+The `/user/{user_id}/summary` and `/user/{user_id}/session` endpoints expose per-user data and require an `X-API-Key` header matching `INTERNAL_API_KEY`.
 
-Generate a key yourself (this is not issued by any external service — you create it):
 ```bash
+# Generate your own key — this isn't issued by any external service
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
-Put the result in `.env` as `INTERNAL_API_KEY=...`, restart the server, and pass it as a header on protected requests:
+
 ```bash
-curl -H "X-API-Key: your_generated_key" http://127.0.0.1:8000/user/some_user/summary
+curl -H "X-API-Key: your_generated_key" \
+     http://127.0.0.1:8000/user/some_user/summary
 ```
-If `INTERNAL_API_KEY` is left unset, a random key is generated per-process at startup (logged as a warning) — fine for a quick local test, but it changes on every restart, so set it explicitly for anything persistent, and always in production.
+
+> If `INTERNAL_API_KEY` is left unset, a random key is generated per-process at startup — fine for a quick local test, but it changes on every restart. Set it explicitly for anything persistent, and **always** in production.
 
 ---
 
-## API Endpoints
+## 📡 API Reference
 
-| Method | Endpoint | Auth required | Description |
-|--------|----------|:---:|-------------|
-| `POST` | `/chat` | No | Main chat endpoint |
-| `POST` | `/summarize` | No | Summarize a community post |
-| `GET` / `HEAD` | `/health` | No | Server health check (includes a real Groq connectivity check) |
-| `GET` | `/user/{user_id}/summary` | **Yes** | User session profile & consistency stats |
-| `DELETE` | `/user/{user_id}/session` | **Yes** | Clear user session from Redis |
-| `GET` / `POST` | `/webhook/whatsapp` | Signed (Meta HMAC) | WhatsApp Cloud API webhook |
+| Method | Endpoint | Auth | Description |
+|---|---|:---:|---|
+| `POST` | `/chat` | — | Main conversational endpoint |
+| `POST` | `/summarize` | — | Summarize a community post |
+| `GET` / `HEAD` | `/health` | — | Health check (real Groq connectivity test) |
+| `GET` | `/user/{user_id}/summary` | 🔑 | User session profile & consistency stats |
+| `DELETE` | `/user/{user_id}/session` | 🔑 | Clear a user's session from Redis |
+| `GET` / `POST` | `/webhook/whatsapp` | 🔒 HMAC | WhatsApp Cloud API webhook |
 
-### Chat Request
+<details>
+<summary><strong>POST /chat</strong> — request & response schema</summary>
+
+<br>
+
+**Request**
 ```json
 {
   "user_id": "user123",
@@ -190,9 +364,14 @@ If `INTERNAL_API_KEY` is left unset, a random key is generated per-process at st
 }
 ```
 
-**Validation:** `message` max 2000 chars (empty rejected), `user_id` max 128 chars, `context` truncated at 4000 chars, `user_timezone` must be a valid IANA name (e.g. `Asia/Karachi`) or is ignored. `user_timezone` drives time-of-day suggestions (morning/evening adhkar); if omitted, these default to UTC rather than the server's local time.
+| Field | Constraint |
+|---|---|
+| `message` | required, 1–2000 chars |
+| `user_id` | required, max 128 chars |
+| `context` | optional, truncated at 4000 chars |
+| `user_timezone` | optional, must be a valid IANA name (e.g. `Asia/Karachi`); drives morning/evening suggestion timing — defaults to UTC if omitted |
 
-### Chat Response
+**Response**
 ```json
 {
   "reply": "...",
@@ -211,22 +390,35 @@ If `INTERNAL_API_KEY` is left unset, a random key is generated per-process at st
   "motivational_quote": "...",
   "timestamp": "2026-01-01T12:00:00.000000",
   "sources": [
-    {"type": "quran", "label": "Sahih International", "detail": "English Translation"}
+    { "type": "quran", "label": "Sahih International", "detail": "English Translation" }
   ]
 }
 ```
 
-### Summarize Request / Response
+</details>
 
-Unchanged from before:
+<details>
+<summary><strong>POST /summarize</strong> — request & response schema</summary>
+
+<br>
+
+**Request**
 ```json
-{"user_id": "user123", "post_content": "Long community post text here..."}
-```
-```json
-{"summary": "Condensed version of the post.", "original_length": 480, "summary_length": 95}
+{ "user_id": "user123", "post_content": "Long community post text here..." }
 ```
 
-### Health Response
+**Response**
+```json
+{ "summary": "Condensed version of the post.", "original_length": 480, "summary_length": 95 }
+```
+
+</details>
+
+<details>
+<summary><strong>GET /health</strong> — response schema</summary>
+
+<br>
+
 ```json
 {
   "status": "healthy",
@@ -238,116 +430,103 @@ Unchanged from before:
     "memory_manager": {
       "status": "active",
       "backend": "redis",
-      "sessions": {"redis_sessions": 24, "fallback_sessions": 0}
+      "sessions": { "redis_sessions": 24, "fallback_sessions": 0 }
     },
     "llm": "connected"
   },
   "uptime": "online"
 }
 ```
-`llm` reflects a real (short, cached ~60s) request to Groq — `"error"` means Groq is actually unreachable or the API key is invalid, not just that the client object exists.
+
+`llm` reflects a real (short, ~60s-cached) request to Groq — `"error"` means Groq is genuinely unreachable or the API key is invalid, not just that the client object exists.
+
+</details>
 
 ---
 
-## How It Works
+## ☁️ Deployment (Render.com)
 
-1. **Cache Check** — Common, non-personalized queries are served instantly from cache (Redis-backed when available, so this stays correct across multiple workers/instances; falls back to an in-process TTL cache otherwise) without hitting the LLM.
-2. **Intent Detection** — Classifies the message into a primary intent (salah, quran, habit, struggling, etc.) and sub-intent, with sentiment and urgency scoring.
-3. **RAG Retrieval** — Fetches relevant content from the Islamic knowledge base and Quran index, scoped per `user_id` so follow-up questions ("show me verse 5 of it") resolve against *that user's* recent context, not another user's.
-4. **User Profiling** — Loads a consistency profile (struggling / medium / high) from Redis based on message history patterns.
-5. **Quick Replies** — High-frequency intents (prayer times, features, greetings, direct verse/surah lookups) are resolved without the LLM.
-6. **LLM Generation** — Groq (LLaMA 3.1 8B), called asynchronously, generates a personalized response using the system prompt, RAG knowledge, conversation context, and user profile. Temperature and token limits adapt to intent and urgency. User-supplied text is sanitized and screened for common prompt-injection patterns first.
-7. **Action Suggestions** — Returns relevant app actions (open Habit Tracker, Quran, Qibla, etc.) and up to 4 quick-reply suggestions. Time-of-day suggestions use `user_timezone` if provided.
-8. **Memory Store** — Both the user message and assistant reply are stored in Redis (last 50 messages per user, 60-day TTL, written via a single pipelined round trip).
+Set the following environment variables in your Render dashboard (never commit `.env`):
 
-### RAG Retrieval
+| Variable | Required | Notes |
+|---|:---:|---|
+| `GROQ_API_KEY` | ✅ | |
+| `INTERNAL_API_KEY` | ✅ | Set explicitly — an auto-generated key changes on every restart |
+| `REDIS_URL` (or Upstash vars) | Recommended | Without it, caching/rate-limiting/memory fall back to single-process in-memory state |
+| `ALLOWED_ORIGINS` | ✅ | Your real frontend domain(s) |
+| `ENV` | ✅ | `production` |
+| `RENDER_URL` | Optional | Your service's own `/health` URL, used by the keep-alive pinger |
+| `RENDER` or `KEEP_ALIVE` | Optional | `true` to enable the keep-alive pinger |
 
-Retrieval is currently regex/keyword-based against a hand-curated knowledge base and the full Quran index — there is no embedding/vector search layer. This works well for known topics and direct verse/surah references, but won't generalize to phrasings that don't share keywords with the curated topic list. If you're extending this, adding a semantic search layer (e.g. sentence-transformers + a small vector index over the existing verse/knowledge-base text) is the highest-leverage improvement to retrieval quality.
-
-### A note on Hadith content
-
-The app references Sahih al-Bukhari and Sahih Muslim in its prompts and UI copy, but **no hadith corpus is bundled in this repository** — only a handful of hardcoded motivational quotes with informal attributions (no hadith number or chain). If hadith accuracy matters for your use case, source a verified, numbered hadith dataset before relying on these for anything where authenticity is important.
+> **First deploy:** set env vars first, deploy once manually to confirm `/health` looks correct, then enable auto-deploy. Render keeps full deploy history under the service's **Events** tab — one-click rollback to any previous deploy if something's wrong.
 
 ---
 
-## Features Covered
+## 🗺️ Roadmap
 
-- 🕌 Prayer times & Adhan notifications
-- 📖 Quran with English, Kashmiri & Urdu translations
-- 📚 Sahih Bukhari & Muslim Hadith *(UI/prompt references only — see note above)*
-- 📿 Duas, Adhkar & Tasbih counter
-- ⭐ Ibadah Habit Tracker with streaks
-- 🧭 Qibla Finder
-- 🌙 Ramadan Mode
-- 👥 Islamic Community (with post summarization)
-- 🎯 Learn Salah & Shahadat guide
-- 💬 WhatsApp integration via Meta Cloud API webhook
+> Suggestions below reflect known gaps identified during development — not commitments or dates.
+
+- [ ] **Semantic / hybrid search** — add an embedding-based retrieval layer on top of the existing keyword/regex matching for better generalization
+- [ ] **Verified hadith corpus** — source a numbered, chain-verified hadith dataset to back the app's existing Sahih al-Bukhari / Sahih Muslim references
+- [ ] **Formal load testing** — publish real latency/throughput numbers once benchmarked
+- [ ] **Automated CI** — lint/test pipeline on push
+- [ ] **Expanded test coverage** — grow the `tests/` suite alongside new features
 
 ---
 
-## Deployment (Render.com)
+## 🤝 Contributing
 
-The `.render-build.sh` script handles the build:
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+This repository is primarily maintained as a personal project, but issues, suggestions, and pull requests are welcome.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes with a clear message
+4. Open a pull request describing the change and why it's needed
+
+Please avoid introducing fabricated religious content, unverified citations, or breaking the existing per-user context isolation and auth guarantees — these are treated as correctness properties of the project, not just style preferences.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**.
+
 ```
-
-Set the following in your Render environment variables (do **not** commit `.env` to Git):
-- `GROQ_API_KEY` — required
-- `INTERNAL_API_KEY` — required; generate your own, see [Authentication](#authentication). Set this explicitly so it doesn't regenerate (and invalidate itself) on every deploy/restart.
-- `REDIS_URL` (or `UPSTASH_REDIS_HOST` / `UPSTASH_REDIS_PORT` / `UPSTASH_REDIS_PASSWORD`) — strongly recommended in production; without it, rate limiting/caching/memory fall back to a single-process in-memory store, which breaks down as soon as you run more than one worker or instance
-- `ALLOWED_ORIGINS` — your real frontend domain(s)
-- `ENV=production`
-- `RENDER_URL` — your Render service's own URL, used by the keep-alive pinger
-- `RENDER=true` (or `KEEP_ALIVE=true`) — enables the keep-alive pinger on startup
-
-**Before your first deploy:** set env vars in the Render dashboard, deploy once manually to confirm `/health` looks correct, then enable auto-deploy if you want push-to-deploy going forward. Render keeps deploy history under the service's "Events"/"Deploys" tab, so you can roll back to a previous deploy with one click if something's wrong.
-
-The `scripts/keep_alive.py` pings `/health` every 10 minutes to prevent the free-tier service from spinning down.
-
----
-
-## Maintenance
-
-Redis session data is **not** cleaned up automatically. Run periodically (cron / Render Cron Job):
-```bash
-python -m scripts.cleanup_memory --inactive-days 60
-```
-
----
-
-## Running Tests
-
-A `tests/` folder is scaffolded for your own test suite. A basic end-to-end smoke test (hits a running server over HTTP and checks the core endpoints, auth, validation, and per-user context isolation) is available separately — point it at your running instance:
-```bash
-python test_backend.py --api-key YOUR_INTERNAL_API_KEY
-```
-If you maintain a pytest-based suite under `tests/`, make sure your virtual environment has all of `requirements.txt` installed (`ModuleNotFoundError: No module named 'redis'` usually means you're running from a different environment than the one you installed dependencies into).
-
-```bash
-pytest tests/
-```
-
----
-
-## License
-
-All Rights Reserved.
+MIT License
 
 Copyright (c) 2026 Kaiser Mohiuddin / SiratSync
 
-This repository is proprietary software shared for portfolio and viewing purposes only.
-Unauthorized copying, modification, distribution, or commercial use is strictly prohibited without explicit written permission.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
-## Developer
+## 👤 Developer
 
 Built by **Kaiser Mohiuddin** — CS student & founder of SiratSync.
 
-- Website: [siratsync.in](https://siratsync.in)
-- Android app: [Google Play](https://play.google.com/store/apps/details?id=com.islamic.streakly)
-- WhatsApp: [wa.me/919541871382](https://wa.me/919541871382)
+**🌐 [Website](https://siratsync.in) · 📱 [Android App](https://play.google.com/store/apps/details?id=com.islamic.streakly) · 💬 [WhatsApp](https://wa.me/919541871382)**
 
-For professional inquiries, connect via LinkedIn or official Website.
+For professional inquiries, connect via LinkedIn or the official website.
+
+<div align="center">
+
+*Built to help the Ummah stay consistent, one habit at a time.* 🤲
+
+</div>
