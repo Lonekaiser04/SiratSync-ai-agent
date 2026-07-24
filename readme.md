@@ -51,8 +51,6 @@ This backend powers Sirat Assistant across the SiratSync app and WhatsApp.
 - **Redis** (Upstash or any standard Redis) — conversation memory, response cache, and rate limiting. Falls back to an in-process, single-worker store automatically if unconfigured (fine for local dev, **not** recommended for production)
 - **Pydantic v2** — request/response validation
 
-> **Note:** Firebase is *not* currently used anywhere in this codebase, despite being mentioned in earlier versions of this README. If you see `firebase-admin` referenced anywhere, it can be safely ignored/removed — no code imports it.
-
 ---
 
 ## Project Structure
