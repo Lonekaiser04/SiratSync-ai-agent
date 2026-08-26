@@ -14,7 +14,7 @@
     },
     {
       "topic": "kaiser_background",
-      "content": "Kaiser Mohiuddin is a Computer Science student with a deep passion for Islamic technology. He started developing SiratSync to solve the problem of inconsistency in daily worship that many Muslims face. His technical expertise includes Flutter, FastAPI, Groq's LLaMA, Firebase, and RAG systems for Islamic knowledge retrieval.Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
+      "content": "Kaiser Mohiuddin is a Computer Science student with a deep passion for Islamic technology. He started developing SiratSync to solve the problem of inconsistency in daily worship that many Muslims face. His technical expertise includes Flutter, FastAPI, Groq's GPT-OSS, Firebase, and RAG systems for Islamic knowledge retrieval.Kaiser Mohiuddin is from Kupwara Kashmir, J & K"
     },
     {
       "topic": "kaiser_mission",
@@ -46,7 +46,7 @@
     },
     {
       "topic": "tech_stack",
-      "content": "SiratSync is built with Flutter for the frontend, Firebase & FastAPI for the backend, and Groq's LLaMA 3.1 for AI responses. The app uses Firebase for user data and RAG for Islamic knowledge retrieval."
+      "content": "SiratSync is built with Flutter for the frontend, Firebase & FastAPI for the backend, and Groq's GPT-OSS-20B for AI responses. The app uses Firebase for user data and RAG for Islamic knowledge retrieval."
     },
     {
       "topic": "github",

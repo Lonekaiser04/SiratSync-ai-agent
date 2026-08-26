@@ -307,7 +307,7 @@ _SRC_KASHMIRI = {
 _SRC_AI = {
     "type": "ai_generated",
     "label": "Sirat Assistant",
-    "detail": "Groq LLaMA 3.1-8b",
+    "detail": "Groq GPT-OSS-20B",
     "icon": "ai",
 }
 _SRC_KB = {

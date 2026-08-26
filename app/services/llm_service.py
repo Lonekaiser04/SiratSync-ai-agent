@@ -3,6 +3,8 @@ import re
 import logging
 from groq import Groq
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 llm = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -120,7 +122,7 @@ def _call_llm_with_rag(user_query: str, rag_data: str, user_profile: dict) -> st
     
     try:
         response = llm.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=settings.GROQ_MODEL,
             messages=[
                 {
                     "role": "system",

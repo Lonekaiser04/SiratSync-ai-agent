@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Redis](https://img.shields.io/badge/Redis-Cache%20%26%20Memory-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Groq](https://img.shields.io/badge/LLM-Groq%20LLaMA%203.1-F55036?logo=llama&logoColor=white)](https://groq.com/)
+[![Groq](https://img.shields.io/badge/LLM-Groq%20GPT--OSS--20B-F55036?logo=llama&logoColor=white)](https://groq.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 [![Last Commit](https://img.shields.io/github/last-commit/Lonekaiser04/SiratSync-ai-agent)](https://github.com/Lonekaiser04/SiratSync-ai-agent/commits/main)
 [![Stars](https://img.shields.io/github/stars/Lonekaiser04/SiratSync-ai-agent?style=social)](https://github.com/Lonekaiser04/SiratSync-ai-agent/stargazers)
@@ -152,7 +152,7 @@ A quick summary of the engineering decisions this repo is most worth reviewing f
 | **Response Cache** | Redis-backed (or local TTL fallback) cache for non-personalized queries — skips the LLM entirely on a cache hit. |
 | **Intent Detection** | Rule-based classifier producing a primary intent, sub-intent, sentiment, and urgency score — no LLM call needed. |
 | **RAG Pipeline** | Retrieves from the full Quran index (114 surahs, 4 languages) and a curated knowledge base; resolves direct verse/surah references without generation. |
-| **LLM** | Groq's `llama-3.1-8b-instant`, called asynchronously, only invoked when retrieval alone can't answer the query. |
+| **LLM** | Groq's `openai/gpt-oss-20b`, called asynchronously, only invoked when retrieval alone can't answer the query. |
 | **Response Processing** | Builds action suggestions, source attributions, and motivational content around the reply. |
 | **Redis Memory** | Stores the last 50 messages and a lightweight consistency profile per user, written via a single pipelined round trip. |
 
@@ -180,7 +180,7 @@ The following optimizations are implemented in the current codebase (no benchmar
 | Layer | Technology |
 |---|---|
 | API Framework | [FastAPI](https://fastapi.tiangolo.com/) (async) |
-| LLM Provider | [Groq](https://groq.com/) — `llama-3.1-8b-instant`, via the async SDK |
+| LLM Provider | [Groq](https://groq.com/) — `openai/gpt-oss-20b`, via the async SDK |
 | Data Validation | [Pydantic v2](https://docs.pydantic.dev/) |
 | Memory / Cache / Rate Limiting | [Redis](https://redis.io/) (Upstash-compatible), with in-process fallback |
 | Messaging Channel | WhatsApp Cloud API (Meta), HMAC-verified webhook |
