@@ -58,7 +58,7 @@ class Settings:
 
     # ── Groq / LLM ───────────────────────────────────────────────────────
     GROQ_API_KEY: str | None = os.environ.get("GROQ_API_KEY")
-    GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+    GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
     LLM_TIMEOUT_SECONDS: float = float(os.environ.get("LLM_TIMEOUT_SECONDS", "20"))
     LLM_MAX_RETRIES: int = _env_int("LLM_MAX_RETRIES", 2)
 
@@ -69,6 +69,7 @@ class Settings:
     UPSTASH_REDIS_PORT: int = _env_int("UPSTASH_REDIS_PORT", 6379)
     REDIS_SOCKET_TIMEOUT: float = float(os.environ.get("REDIS_SOCKET_TIMEOUT", "3"))
     REDIS_MAX_CONNECTIONS: int = _env_int("REDIS_MAX_CONNECTIONS", 20)
+    REDIS_SSL: bool = _env_bool("REDIS_SSL", False)
 
     # ── Rate limiting ────────────────────────────────────────────────────
     RATE_LIMIT_MAX_KEYS: int = _env_int("RATE_LIMIT_MAX_KEYS", 10_000)
@@ -89,6 +90,14 @@ class Settings:
     # explicitly so restarts don't invalidate previously issued keys.
     INTERNAL_API_KEY: str = os.environ.get("INTERNAL_API_KEY") or secrets.token_urlsafe(32)
     REQUIRE_USER_AUTH: bool = _env_bool("REQUIRE_USER_AUTH", True)
+    REQUIRE_FIREBASE_AUTH: bool = _env_bool("REQUIRE_FIREBASE_AUTH", False)
+    FIREBASE_CREDENTIALS_JSON: str | None = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+    FIREBASE_PROJECT_ID: str | None = os.environ.get("FIREBASE_PROJECT_ID", "streakly-6f3d6")
+
+    # ── Trusted Proxies ──────────────────────────────────────────────────
+    TRUSTED_PROXIES: list[str] = _split_csv(
+        os.environ.get("TRUSTED_PROXIES", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+    )
 
     # ── Request limits ───────────────────────────────────────────────────
     MAX_MESSAGE_LENGTH: int = _env_int("MAX_MESSAGE_LENGTH", 2000)
@@ -104,7 +113,7 @@ class Settings:
     WHATSAPP_API_VERSION: str = os.environ.get("WHATSAPP_API_VERSION", "v19.0")
 
     # ── Render / keep-alive ──────────────────────────────────────────────
-    RENDER_URL: str = os.environ.get("RENDER_URL", "https://siratsync-api.onrender.com/health")
+    RENDER_URL: str = os.environ.get("RENDER_URL", "https://siratsync-ai-agent.onrender.com/health/live")
     KEEP_ALIVE_ENABLED: bool = _env_bool("RENDER", False) or _env_bool("KEEP_ALIVE", False)
 
     def validate(self) -> None:

@@ -36,7 +36,7 @@ async def summarize_post(request: SummarizeRequest):
                 summary_length=len(content),
             )
 
-        cached = cache.get(content, request.user_id, scope="summarize")
+        cached = await cache.get(content, request.user_id, scope="summarize")
         if cached:
             try:
                 data = json_module.loads(cached)
@@ -74,7 +74,7 @@ async def summarize_post(request: SummarizeRequest):
         )
 
         try:
-            cache.set(
+            await cache.set(
                 content,
                 request.user_id,
                 json_module.dumps(result.model_dump()),

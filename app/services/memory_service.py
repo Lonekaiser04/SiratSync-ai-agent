@@ -1,6 +1,7 @@
 """
 Redis-backed conversation memory and lightweight user profiling, with an
 in-process fallback for local development / Redis outages.
+Migrated to redis.asyncio to prevent blocking the asyncio event loop.
 """
 from __future__ import annotations
 
@@ -11,7 +12,9 @@ import threading
 from datetime import datetime, timedelta
 from typing import Any
 
-import redis
+from redis import asyncio as aioredis
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,11 @@ _STRUGGLE_WORDS = frozenset({"miss", "skip", "hard", "difficult", "struggle", "f
 
 
 class MemoryManager:
-    """Thread-safe-enough for FastAPI's async workers (no shared mutable
-    state beyond the fallback dicts, which are guarded by a lock)."""
+    """Thread-safe and async-safe memory manager using redis.asyncio."""
 
     def __init__(self) -> None:
-        self.redis: redis.Redis | None = None
+        self.redis: aioredis.Redis | None = None
+        self._pool: aioredis.ConnectionPool | None = None
         self.fallback_sessions: dict[str, list[dict]] = {}
         self.fallback_stats: dict[str, dict[str, int]] = {}
         self._fallback_lock = threading.Lock()
@@ -46,55 +49,73 @@ class MemoryManager:
             redis_url = os.environ.get("REDIS_URL")
 
             if redis_url:
-                if redis_url.startswith("redis://"):
+                if settings.REDIS_SSL and redis_url.startswith("redis://"):
                     redis_url = redis_url.replace("redis://", "rediss://", 1)
 
-                pool = redis.ConnectionPool.from_url(
+                self._pool = aioredis.ConnectionPool.from_url(
                     redis_url,
                     decode_responses=True,
-                    socket_timeout=3,
-                    socket_connect_timeout=3,
-                    ssl_cert_reqs=None,
-                    max_connections=20,
+                    socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                    socket_connect_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                    max_connections=settings.REDIS_MAX_CONNECTIONS,
                     retry_on_timeout=True,
                     health_check_interval=30,
                 )
-                self.redis = redis.Redis(connection_pool=pool)
-                self.redis.ping()
-                logger.info("Connected to Redis via REDIS_URL (pooled)")
+                self.redis = aioredis.Redis(connection_pool=self._pool)
+                logger.info("Configured async Redis pool via REDIS_URL")
             else:
                 host = os.environ.get("UPSTASH_REDIS_HOST")
                 password = os.environ.get("UPSTASH_REDIS_PASSWORD")
                 port = int(os.environ.get("UPSTASH_REDIS_PORT", 6379))
 
                 if host and password:
-                    pool = redis.ConnectionPool(
+                    self._pool = aioredis.ConnectionPool(
                         host=host,
                         port=port,
                         password=password,
                         ssl=True,
                         ssl_cert_reqs=None,
                         decode_responses=True,
-                        socket_timeout=3,
-                        socket_connect_timeout=3,
-                        max_connections=20,
+                        socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                        socket_connect_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                        max_connections=settings.REDIS_MAX_CONNECTIONS,
                         retry_on_timeout=True,
                         health_check_interval=30,
                     )
-                    self.redis = redis.Redis(connection_pool=pool)
-                    self.redis.ping()
-                    logger.info("Connected to Redis via env variables (pooled)")
+                    self.redis = aioredis.Redis(connection_pool=self._pool)
+                    logger.info("Configured async Redis pool via env variables")
                 else:
-                    logger.warning("No Redis credentials configured — using in-memory fallback")
+                    logger.info("No Redis credentials configured — using in-memory fallback")
                     self.redis = None
-        except redis.RedisError as e:
-            logger.warning("Redis connection failed: %s — using in-memory fallback", e)
-            self.redis = None
-        except Exception as e:  # unexpected: misconfigured URL, DNS, etc.
-            logger.warning("Unexpected error initializing Redis: %s — using in-memory fallback", e)
+        except Exception as e:
+            logger.warning("Error configuring async Redis pool: %s — using in-memory fallback", e)
             self.redis = None
 
-    def _is_redis_available(self) -> bool:
+    async def initialize(self) -> None:
+        """Called at app startup to test connectivity asynchronously."""
+        if self.redis is not None:
+            try:
+                await self.redis.ping()
+                self._last_health_check = datetime.now()
+                self._last_health_result = True
+                logger.info("✅ Connected to async Redis successfully")
+            except Exception as e:
+                logger.warning("⚠️ Async Redis ping failed at startup: %s — using fallback", e)
+                self._last_health_check = datetime.now()
+                self._last_health_result = False
+
+    async def close(self) -> None:
+        """Gracefully close Redis connections on app shutdown."""
+        if self.redis is not None:
+            try:
+                await self.redis.aclose()
+                if self._pool is not None:
+                    await self._pool.disconnect()
+                logger.info("Closed async Redis connection pool")
+            except Exception as e:
+                logger.warning("Error closing async Redis connection: %s", e)
+
+    async def is_redis_available(self) -> bool:
         """Cheap availability check, cached briefly to avoid a PING per call."""
         if self.redis is None:
             return False
@@ -107,19 +128,25 @@ class MemoryManager:
             return self._last_health_result
 
         try:
-            self.redis.ping()
+            await self.redis.ping()
             self._last_health_check = now
             self._last_health_result = True
             return True
-        except redis.RedisError as e:
+        except Exception as e:
             logger.warning("Redis health check failed: %s", e)
             self._last_health_check = now
             self._last_health_result = False
             return False
 
+    def _is_redis_available_sync(self) -> bool:
+        """Non-blocking cached availability check for synchronous callers."""
+        if self.redis is None:
+            return False
+        return self._last_health_result
+
     # ── Writes ───────────────────────────────────────────────────────────
-    def add_message(self, user_id: str, role: str, content: str) -> None:
-        """Persist a chat message and update lightweight engagement stats."""
+    async def add_message(self, user_id: str, role: str, content: str) -> None:
+        """Persist a chat message asynchronously and update lightweight engagement stats."""
         if not user_id or role not in {"user", "assistant"}:
             logger.warning("add_message called with invalid args: user_id=%r role=%r", user_id, role)
             return
@@ -130,34 +157,34 @@ class MemoryManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-        if self._is_redis_available():
+        if await self.is_redis_available():
             try:
                 chat_key = f"sirat:chat:{user_id}"
                 active_key = f"sirat:active:{user_id}"
                 stats_key = f"sirat:stats:{user_id}"
 
-                pipe = self.redis.pipeline(transaction=False)
-                pipe.rpush(chat_key, json.dumps(message_data))
-                pipe.ltrim(chat_key, -_MAX_MESSAGES_STORED, -1)
-                pipe.expire(chat_key, _CHAT_TTL_SECONDS)
-                pipe.set(active_key, datetime.now().isoformat())
-                pipe.expire(active_key, _ACTIVE_TTL_SECONDS)
+                async with self.redis.pipeline(transaction=False) as pipe:
+                    pipe.rpush(chat_key, json.dumps(message_data))
+                    pipe.ltrim(chat_key, -_MAX_MESSAGES_STORED, -1)
+                    pipe.expire(chat_key, _CHAT_TTL_SECONDS)
+                    pipe.set(active_key, datetime.now().isoformat())
+                    pipe.expire(active_key, _ACTIVE_TTL_SECONDS)
 
-                if role == "user":
-                    content_lower = content.lower()
-                    pipe.hincrby(stats_key, "total_messages", 1)
-                    if any(word in content_lower for word in _POSITIVE_WORDS):
-                        pipe.hincrby(stats_key, "achievement_count", 1)
-                    if any(word in content_lower for word in _STRUGGLE_WORDS):
-                        pipe.hincrby(stats_key, "struggle_count", 1)
-                    pipe.expire(stats_key, _STATS_TTL_SECONDS)
+                    if role == "user":
+                        content_lower = content.lower()
+                        pipe.hincrby(stats_key, "total_messages", 1)
+                        if any(word in content_lower for word in _POSITIVE_WORDS):
+                            pipe.hincrby(stats_key, "achievement_count", 1)
+                        if any(word in content_lower for word in _STRUGGLE_WORDS):
+                            pipe.hincrby(stats_key, "struggle_count", 1)
+                        pipe.expire(stats_key, _STATS_TTL_SECONDS)
 
-                pipe.execute()
-            except redis.RedisError as e:
+                    await pipe.execute()
+                return
+            except Exception as e:
                 logger.warning("Redis pipeline error in add_message: %s — using fallback", e)
-                self._fallback_add(user_id, message_data)
-        else:
-            self._fallback_add(user_id, message_data)
+
+        self._fallback_add(user_id, message_data)
 
     def _fallback_add(self, user_id: str, message_data: dict) -> None:
         with self._fallback_lock:
@@ -167,11 +194,11 @@ class MemoryManager:
                 self.fallback_sessions[user_id] = bucket[-_MAX_MESSAGES_STORED:]
 
     # ── Reads ────────────────────────────────────────────────────────────
-    def _get_recent_messages(self, user_id: str, count: int) -> list[dict]:
-        if self._is_redis_available():
+    async def _get_recent_messages(self, user_id: str, count: int) -> list[dict]:
+        if await self.is_redis_available():
             try:
                 key = f"sirat:chat:{user_id}"
-                raw_messages = self.redis.lrange(key, -count, -1)
+                raw_messages = await self.redis.lrange(key, -count, -1)
                 messages = []
                 for raw in raw_messages:
                     if not raw or not raw.strip():
@@ -181,14 +208,14 @@ class MemoryManager:
                     except (json.JSONDecodeError, TypeError):
                         logger.warning("Skipping corrupt message entry for user %s", user_id)
                 return messages
-            except redis.RedisError as e:
+            except Exception as e:
                 logger.warning("Redis error reading messages: %s — using fallback", e)
 
         with self._fallback_lock:
             return list(self.fallback_sessions.get(user_id, [])[-count:])
 
-    def get_context(self, user_id: str, max_messages: int = 8) -> str:
-        messages = self._get_recent_messages(user_id, max_messages)
+    async def get_context(self, user_id: str, max_messages: int = 8) -> str:
+        messages = await self._get_recent_messages(user_id, max_messages)
         if not messages:
             return ""
         return "\n".join(
@@ -196,33 +223,32 @@ class MemoryManager:
             for msg in messages
         )
 
-    def get_last_question(self, user_id: str) -> str | None:
-        messages = self._get_recent_messages(user_id, 5)
+    async def get_last_question(self, user_id: str) -> str | None:
+        messages = await self._get_recent_messages(user_id, 5)
         for msg in reversed(messages):
             if msg.get("role") == "user":
                 return msg.get("content")
         return None
 
-    def get_last_bot_message(self, user_id: str) -> str | None:
-        """Most recent assistant reply, used e.g. when a user flags a
-        prior answer as incorrect and we want to reference what they mean."""
-        messages = self._get_recent_messages(user_id, 5)
+    async def get_last_bot_message(self, user_id: str) -> str | None:
+        """Most recent assistant reply."""
+        messages = await self._get_recent_messages(user_id, 5)
         for msg in reversed(messages):
             if msg.get("role") == "assistant":
                 return msg.get("content")
         return None
 
-    def get_user_profile(self, user_id: str) -> dict[str, Any]:
+    async def get_user_profile(self, user_id: str) -> dict[str, Any]:
         stats = {"total_messages": 0, "achievement_count": 0, "struggle_count": 0}
 
-        if self._is_redis_available():
+        if await self.is_redis_available():
             try:
                 key = f"sirat:stats:{user_id}"
-                pipe = self.redis.pipeline(transaction=False)
-                pipe.hget(key, "total_messages")
-                pipe.hget(key, "achievement_count")
-                pipe.hget(key, "struggle_count")
-                results = pipe.execute()
+                async with self.redis.pipeline(transaction=False) as pipe:
+                    pipe.hget(key, "total_messages")
+                    pipe.hget(key, "achievement_count")
+                    pipe.hget(key, "struggle_count")
+                    results = await pipe.execute()
 
                 if results[0] is not None:
                     stats["total_messages"] = int(results[0])
@@ -230,7 +256,7 @@ class MemoryManager:
                     stats["achievement_count"] = int(results[1])
                 if results[2] is not None:
                     stats["struggle_count"] = int(results[2])
-            except (redis.RedisError, ValueError, TypeError) as e:
+            except Exception as e:
                 logger.warning("Failed to read user profile stats for %s: %s", user_id, e)
 
         consistency = "unknown"
@@ -249,57 +275,54 @@ class MemoryManager:
             "suggested_advice": self._get_advice(consistency),
         }
 
-    def get_session_summary(self, user_id: str) -> dict[str, Any]:
-        profile = self.get_user_profile(user_id)
+    async def get_session_summary(self, user_id: str) -> dict[str, Any]:
+        profile = await self.get_user_profile(user_id)
         has_messages = profile.get("message_count", 0) > 0
+        is_redis = await self.is_redis_available()
         return {
             "active": has_messages,
             "message_count": profile.get("message_count", 0),
             "consistency": profile.get("consistency", "unknown"),
             "suggested_advice": profile.get("suggested_advice", ""),
-            "using_redis": self._is_redis_available(),
+            "using_redis": is_redis,
         }
 
     # ── Maintenance ──────────────────────────────────────────────────────
-    def cleanup_inactive_users(self, inactive_days: int = 60, batch_size: int = 500) -> int:
-        """Delete Redis keys for users inactive beyond `inactive_days`.
-
-        Uses SCAN (not KEYS) to avoid blocking Redis, and batches deletes.
-        Returns the number of users cleaned up.
-        """
-        if not self._is_redis_available():
+    async def cleanup_inactive_users(self, inactive_days: int = 60, batch_size: int = 500) -> int:
+        """Delete Redis keys for users inactive beyond `inactive_days`."""
+        if not await self.is_redis_available():
             return 0
 
         cleaned = 0
         try:
-            for key in self.redis.scan_iter("sirat:active:*", count=batch_size):
+            async for key in self.redis.scan_iter("sirat:active:*", count=batch_size):
                 user_id = key.split(":")[-1]
-                if not self.is_user_active(user_id, inactive_days):
+                if not await self.is_user_active(user_id, inactive_days):
                     try:
-                        pipe = self.redis.pipeline(transaction=False)
-                        pipe.delete(f"sirat:chat:{user_id}")
-                        pipe.delete(f"sirat:stats:{user_id}")
-                        pipe.delete(key)
-                        pipe.execute()
+                        async with self.redis.pipeline(transaction=False) as pipe:
+                            pipe.delete(f"sirat:chat:{user_id}")
+                            pipe.delete(f"sirat:stats:{user_id}")
+                            pipe.delete(key)
+                            await pipe.execute()
                         cleaned += 1
                         logger.info("Cleaned up inactive user: %s", user_id)
-                    except redis.RedisError as e:
+                    except Exception as e:
                         logger.error("Failed to clean up user %s: %s", user_id, e)
-        except redis.RedisError as e:
+        except Exception as e:
             logger.error("Cleanup scan failed: %s", e)
 
         return cleaned
 
-    def clear_session(self, user_id: str) -> dict[str, str]:
-        if self._is_redis_available():
+    async def clear_session(self, user_id: str) -> dict[str, str]:
+        if await self.is_redis_available():
             try:
-                pipe = self.redis.pipeline(transaction=False)
-                pipe.delete(f"sirat:chat:{user_id}")
-                pipe.delete(f"sirat:stats:{user_id}")
-                pipe.delete(f"sirat:active:{user_id}")
-                pipe.execute()
+                async with self.redis.pipeline(transaction=False) as pipe:
+                    pipe.delete(f"sirat:chat:{user_id}")
+                    pipe.delete(f"sirat:stats:{user_id}")
+                    pipe.delete(f"sirat:active:{user_id}")
+                    await pipe.execute()
                 logger.info("Cleared Redis data for user: %s", user_id)
-            except redis.RedisError as e:
+            except Exception as e:
                 logger.error("Failed to clear Redis data for %s: %s", user_id, e)
 
         with self._fallback_lock:
@@ -308,19 +331,19 @@ class MemoryManager:
 
         return {"status": "cleared", "user_id": user_id}
 
-    def get_last_active(self, user_id: str) -> datetime | None:
-        if self._is_redis_available():
+    async def get_last_active(self, user_id: str) -> datetime | None:
+        if await self.is_redis_available():
             try:
                 key = f"sirat:active:{user_id}"
-                timestamp = self.redis.get(key)
+                timestamp = await self.redis.get(key)
                 if timestamp:
                     return datetime.fromisoformat(timestamp)
-            except (redis.RedisError, ValueError) as e:
+            except Exception as e:
                 logger.warning("Failed to read last_active for %s: %s", user_id, e)
         return None
 
-    def is_user_active(self, user_id: str, days: int = 30) -> bool:
-        last_active = self.get_last_active(user_id)
+    async def is_user_active(self, user_id: str, days: int = 30) -> bool:
+        last_active = await self.get_last_active(user_id)
         if last_active:
             return (datetime.now() - last_active).days < days
         return False
@@ -332,23 +355,19 @@ class MemoryManager:
             return "🌟 MashaAllah! Consider adding morning adhkar to your routine."
         return "📌 Set a small daily goal in the Habit Tracker today."
 
+    async def get_session_counts(self) -> dict[str, int]:
+        """Lightweight session counts without scanning the entire keyspace."""
+        if await self.is_redis_available():
+            try:
+                dbsize = await self.redis.dbsize()
+                return {"redis_keys": dbsize, "fallback_sessions": len(self.fallback_sessions)}
+            except Exception:
+                pass
+        return {"fallback_sessions": len(self.fallback_sessions)}
+
     @property
     def sessions(self) -> dict[str, int]:
-        """Lightweight session count for health checks.
-
-        Uses DBSIZE-style counting via SCAN with a safety cap so this
-        stays cheap even if called frequently by monitoring.
-        """
-        if self._is_redis_available():
-            try:
-                count = 0
-                for _ in self.redis.scan_iter("sirat:active:*", count=500):
-                    count += 1
-                    if count >= 10_000:  # cap: this is a health-check hint, not a precise metric
-                        break
-                return {"redis_sessions": count, "fallback_sessions": len(self.fallback_sessions)}
-            except redis.RedisError:
-                pass
+        """Backward-compatible synchronous property for diagnostics."""
         return {"fallback_sessions": len(self.fallback_sessions)}
 
 

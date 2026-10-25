@@ -367,7 +367,7 @@ async def get_quick_response(
 
     CORRECTION_WORDS = {"wrong", "incorrect", "not correct", "that's wrong", "mistake"}
     if any(w in message_lower for w in CORRECTION_WORDS):
-        last_bot_message = memory.get_last_bot_message(user_id)
+        last_bot_message = await memory.get_last_bot_message(user_id)
         if last_bot_message:
             logger.info("⚡ Correction acknowledgment — no LLM")
             return (

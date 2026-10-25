@@ -25,10 +25,12 @@ async def get_user_summary(user_id: str):
         raise HTTPException(status_code=400, detail="user_id cannot be empty")
 
     try:
+        profile = await memory.get_user_profile(user_id)
+        session = await memory.get_session_summary(user_id)
         return {
             "user_id": user_id,
-            "profile": memory.get_user_profile(user_id),
-            "session": memory.get_session_summary(user_id),
+            "profile": profile,
+            "session": session,
             "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
@@ -42,7 +44,7 @@ async def clear_user_session(user_id: str):
         raise HTTPException(status_code=400, detail="user_id cannot be empty")
 
     try:
-        memory.clear_session(user_id)
+        await memory.clear_session(user_id)
         return {"status": "success", "message": f"Session cleared for user {user_id}"}
     except Exception as e:
         logger.error("Failed to clear session for user %s: %s", user_id, e, exc_info=True)

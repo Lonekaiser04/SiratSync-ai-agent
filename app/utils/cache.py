@@ -1,14 +1,10 @@
 """
 Response cache with two backends:
-  - RedisResponseCache: shared across all workers/instances (used whenever
-    Redis is available — this is the correct choice for anything beyond a
-    single-process deployment).
-  - LocalResponseCache: thread-safe in-memory TTL cache, used as a fallback
-    when Redis is unavailable (e.g. local dev without Redis configured).
+  - RedisResponseCache: async Redis-backed cache shared across all instances.
+  - LocalResponseCache: thread-safe in-memory TTL cache fallback.
 
-The cache key is scoped per-user (previously the `user_id` parameter was
-accepted but silently ignored, causing responses to leak across users for
-any two users who happened to ask the same normalized question).
+Optimized to allow cross-user reuse of non-personalized queries and public
+community post summaries, while safeguarding private/personalized conversations.
 """
 from __future__ import annotations
 
@@ -19,8 +15,6 @@ import re
 import threading
 from datetime import datetime, timedelta
 from typing import Optional
-
-import redis
 
 from app.core.config import settings
 
@@ -46,13 +40,20 @@ def _is_personalized(message: str) -> bool:
 
 
 def _cache_key(message: str, user_id: str, scope: str = "chat") -> str:
+    if scope == "summarize":
+        # Public post summaries can be reused across all users
+        content_hash = hashlib.sha256(message.strip().encode("utf-8")).hexdigest()
+        return f"{settings.SUMMARY_CACHE_PREFIX}{content_hash}"
+
+    # Chat queries
     normalized = _normalize_message(message)
-    digest = hashlib.sha256(f"{scope}:{user_id}:{normalized}".encode("utf-8")).hexdigest()
-    return f"{settings.RESPONSE_CACHE_PREFIX}{scope}:{digest}"
+    # Non-personalized factual queries are shared cross-user
+    digest = hashlib.sha256(f"chat:{normalized}".encode("utf-8")).hexdigest()
+    return f"{settings.RESPONSE_CACHE_PREFIX}chat:{digest}"
 
 
 class LocalResponseCache:
-    """Thread-safe in-memory TTL cache, single-process only."""
+    """Thread-safe in-memory TTL cache, single-process fallback."""
 
     def __init__(self, max_entries: int = 2_000) -> None:
         self._cache: dict[str, tuple[str, datetime]] = {}
@@ -60,7 +61,7 @@ class LocalResponseCache:
         self._max_entries = max_entries
         self.stats = {"hits": 0, "misses": 0}
 
-    def get(self, message: str, user_id: str, scope: str = "chat") -> Optional[str]:
+    async def get(self, message: str, user_id: str = "default", scope: str = "chat") -> Optional[str]:
         key = _cache_key(message, user_id, scope)
         with self._lock:
             entry = self._cache.get(key)
@@ -75,15 +76,15 @@ class LocalResponseCache:
             self.stats["hits"] += 1
             return response
 
-    def set(
+    async def set(
         self,
         message: str,
-        user_id: str,
-        response: str,
+        user_id: str = "default",
+        response: str = "",
         ttl_minutes: int = 60,
         scope: str = "chat",
     ) -> None:
-        if _is_personalized(message):
+        if scope == "chat" and _is_personalized(message):
             return
 
         key = _cache_key(message, user_id, scope)
@@ -93,8 +94,6 @@ class LocalResponseCache:
             self._cache[key] = (response, expiry)
             if len(self._cache) > self._max_entries:
                 self._evict_expired_locked()
-                # If still over budget, drop the oldest half to bound growth
-                # even under a burst of unique never-expiring-soon keys.
                 if len(self._cache) > self._max_entries:
                     overflow = len(self._cache) - self._max_entries
                     for k in list(self._cache.keys())[:overflow]:
@@ -106,76 +105,76 @@ class LocalResponseCache:
         for k in expired:
             del self._cache[k]
 
-    def delete(self, message: str, user_id: str, scope: str = "chat") -> None:
+    async def delete(self, message: str, user_id: str = "default", scope: str = "chat") -> None:
         key = _cache_key(message, user_id, scope)
         with self._lock:
             self._cache.pop(key, None)
 
 
 class RedisResponseCache:
-    """Redis-backed cache, correct under multiple workers/instances."""
+    """Redis-backed async cache, shared across all instances."""
 
-    def __init__(self, redis_client: redis.Redis) -> None:
-        self._redis = redis_client
+    def __init__(self) -> None:
         self.stats = {"hits": 0, "misses": 0}
-        # Local cache absorbs Redis outages without losing cache semantics
-        # entirely; also serves as a cheap negative-lookup fallback.
         self._local_fallback = LocalResponseCache(max_entries=settings.LOCAL_CACHE_MAX_ENTRIES)
 
-    def get(self, message: str, user_id: str, scope: str = "chat") -> Optional[str]:
-        key = _cache_key(message, user_id, scope)
+    def _get_redis(self):
         try:
-            value = self._redis.get(key)
-            if value is not None:
-                self.stats["hits"] += 1
-                return value
-            self.stats["misses"] += 1
+            from app.services.memory_service import memory
+            return memory.redis
+        except Exception:
             return None
-        except redis.RedisError as e:
-            logger.warning("Redis cache GET failed, falling back to local cache: %s", e)
-            return self._local_fallback.get(message, user_id, scope)
 
-    def set(
+    async def get(self, message: str, user_id: str = "default", scope: str = "chat") -> Optional[str]:
+        redis_client = self._get_redis()
+        if redis_client is not None:
+            key = _cache_key(message, user_id, scope)
+            try:
+                value = await redis_client.get(key)
+                if value is not None:
+                    self.stats["hits"] += 1
+                    return value
+                self.stats["misses"] += 1
+                return None
+            except Exception as e:
+                logger.warning("Redis cache GET failed, falling back to local: %s", e)
+
+        return await self._local_fallback.get(message, user_id, scope)
+
+    async def set(
         self,
         message: str,
-        user_id: str,
-        response: str,
+        user_id: str = "default",
+        response: str = "",
         ttl_minutes: int = 60,
         scope: str = "chat",
     ) -> None:
-        if _is_personalized(message):
+        if scope == "chat" and _is_personalized(message):
             return
 
-        key = _cache_key(message, user_id, scope)
-        try:
-            self._redis.set(key, response, ex=timedelta(minutes=ttl_minutes))
-        except redis.RedisError as e:
-            logger.warning("Redis cache SET failed, falling back to local cache: %s", e)
-            self._local_fallback.set(message, user_id, response, ttl_minutes, scope)
+        redis_client = self._get_redis()
+        if redis_client is not None:
+            key = _cache_key(message, user_id, scope)
+            try:
+                await redis_client.set(key, response, ex=timedelta(minutes=ttl_minutes))
+                return
+            except Exception as e:
+                logger.warning("Redis cache SET failed, falling back to local: %s", e)
 
-    def delete(self, message: str, user_id: str, scope: str = "chat") -> None:
-        key = _cache_key(message, user_id, scope)
-        try:
-            self._redis.delete(key)
-        except redis.RedisError as e:
-            logger.warning("Redis cache DELETE failed: %s", e)
+        await self._local_fallback.set(message, user_id, response, ttl_minutes, scope)
 
+    async def delete(self, message: str, user_id: str = "default", scope: str = "chat") -> None:
+        redis_client = self._get_redis()
+        if redis_client is not None:
+            key = _cache_key(message, user_id, scope)
+            try:
+                await redis_client.delete(key)
+                return
+            except Exception as e:
+                logger.warning("Redis cache DELETE failed: %s", e)
 
-def _build_cache():
-    """Reuse the memory service's Redis connection when available so we
-    don't open a second connection pool just for caching."""
-    try:
-        from app.services.memory_service import memory as _memory
-
-        if _memory.redis is not None and _memory._is_redis_available():
-            logger.info("ResponseCache using shared Redis connection")
-            return RedisResponseCache(_memory.redis)
-    except Exception as e:  # pragma: no cover - defensive; fall back locally
-        logger.warning("Could not attach response cache to Redis: %s", e)
-
-    logger.info("ResponseCache using local in-memory store (single-process only)")
-    return LocalResponseCache(max_entries=settings.LOCAL_CACHE_MAX_ENTRIES)
+        await self._local_fallback.delete(message, user_id, scope)
 
 
-# Global cache instance — Redis-backed when possible, local otherwise.
-cache = _build_cache()
+# Global async cache instance
+cache = RedisResponseCache()

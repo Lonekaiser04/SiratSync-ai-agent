@@ -7,6 +7,7 @@ Usage:
     python -m scripts.cleanup_memory [--inactive-days N] [--dry-run]
 """
 import argparse
+import asyncio
 import logging
 import sys
 
@@ -16,16 +17,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
-def cleanup_inactive_users(inactive_days: int = 60) -> int:
-    """Run periodically to clean up inactive users. Returns the number
-    of users cleaned up."""
-    if not memory._is_redis_available():
+async def _async_cleanup(inactive_days: int) -> int:
+    if not await memory.is_redis_available():
         logger.warning("Redis is not available — nothing to clean up (in-memory fallback is ephemeral).")
         return 0
 
-    cleaned = memory.cleanup_inactive_users(inactive_days=inactive_days)
+    cleaned = await memory.cleanup_inactive_users(inactive_days=inactive_days)
     logger.info("Cleanup complete: %d inactive user(s) removed.", cleaned)
+    await memory.close()
     return cleaned
+
+
+def cleanup_inactive_users(inactive_days: int = 60) -> int:
+    """Run periodically to clean up inactive users. Returns the number
+    of users cleaned up."""
+    return asyncio.run(_async_cleanup(inactive_days))
 
 
 def main() -> int:

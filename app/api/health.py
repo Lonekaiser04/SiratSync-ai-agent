@@ -1,17 +1,13 @@
 """
-Health check endpoint.
-
-The LLM connectivity check performs a real (tiny) request against Groq
-rather than just checking that the client object was constructed — a
-constructed client is always truthy, so the previous implementation could
-never detect an actual outage or revoked API key. The real check result is
-cached briefly so frequent monitoring probes don't multiply LLM spend.
+Health check endpoints:
+  - /health/live: Ultra-lightweight liveness probe for uptime monitors and keep-alive pingers (no external dependencies, zero spend).
+  - /health and /health/ready: Readiness and component diagnostics (RAG, Redis, LLM configuration).
 """
 import logging
 import time
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from groq import AsyncGroq, GroqError
 
 from app.core.config import settings
@@ -22,37 +18,53 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_llm = AsyncGroq(api_key=settings.GROQ_API_KEY)
+_llm = AsyncGroq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
 
-_LLM_CHECK_CACHE_SECONDS = 60
+_LLM_CHECK_CACHE_SECONDS = 300  # 5 minutes cache for deep checks
 _last_llm_check_time: float = 0.0
 _last_llm_check_result: str = "unknown"
 
 
-async def _check_llm_connectivity() -> str:
+@router.get("/health/live")
+@router.head("/health/live")
+async def liveness():
+    """Ultra-lightweight liveness probe for uptime monitors and keep-alive pingers."""
+    return {
+        "status": "alive",
+        "version": "2.0",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+async def _check_llm_connectivity(deep: bool = False) -> str:
     global _last_llm_check_time, _last_llm_check_result
 
-    now = time.monotonic()
-    if now - _last_llm_check_time < _LLM_CHECK_CACHE_SECONDS:
-        return _last_llm_check_result
-
     if not settings.GROQ_API_KEY:
-        _last_llm_check_result = "not_configured"
-        _last_llm_check_time = now
+        return "not_configured"
+
+    # For standard health checks, reporting configured is sufficient and avoids wasting LLM tokens
+    if not deep:
+        return "configured"
+
+    now = time.monotonic()
+    if now - _last_llm_check_time < _LLM_CHECK_CACHE_SECONDS and _last_llm_check_result != "unknown":
         return _last_llm_check_result
 
     try:
-        await _llm.chat.completions.create(
-            model=settings.GROQ_MODEL,
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1,
-            timeout=5,
-        )
-        _last_llm_check_result = "connected"
+        if _llm is not None:
+            await _llm.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+                timeout=5,
+            )
+            _last_llm_check_result = "connected"
+        else:
+            _last_llm_check_result = "not_configured"
     except GroqError as e:
         logger.warning("Health check: LLM connectivity failed: %s", e)
         _last_llm_check_result = "error"
-    except Exception as e:  # network-level failures, timeouts, etc.
+    except Exception as e:
         logger.warning("Health check: unexpected LLM check failure: %s", e)
         _last_llm_check_result = "error"
 
@@ -62,11 +74,13 @@ async def _check_llm_connectivity() -> str:
 
 @router.get("/health")
 @router.head("/health")
-async def health():
-    llm_status = await _check_llm_connectivity()
-    session_counts = memory.sessions
+@router.get("/health/ready")
+async def health(deep: bool = Query(default=False, description="Run deep external LLM test")):
+    llm_status = await _check_llm_connectivity(deep=deep)
+    is_redis = await memory.is_redis_available()
+    session_counts = await memory.get_session_counts()
 
-    overall_status = "healthy" if llm_status in ("connected", "not_configured") else "degraded"
+    overall_status = "healthy" if llm_status in ("configured", "connected", "not_configured") else "degraded"
 
     return {
         "status": overall_status,
@@ -77,10 +91,11 @@ async def health():
             "rag_knowledge": f"loaded ({len(rag_service.list_categories())} categories)",
             "memory_manager": {
                 "status": "active",
-                "backend": "redis" if memory._is_redis_available() else "in-memory-fallback",
+                "backend": "redis" if is_redis else "in-memory-fallback",
                 "sessions": session_counts,
             },
             "llm": llm_status,
+            "model": settings.GROQ_MODEL,
         },
         "uptime": "online",
     }

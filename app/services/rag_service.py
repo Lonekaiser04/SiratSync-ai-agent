@@ -849,7 +849,7 @@ class RAGKnowledge:
 
         for surah in self.quran_data:
             meta     = surah.get("_metadata", {})
-            meta_kws = {kw.lower() for kw in meta.get("keywords_en", [])}
+            meta_kws = {kw.lower().strip() for kw in meta.get("keywords_en", []) if len(kw.strip()) > 3 and kw.strip().lower() not in ("surah", "ayat", "verse", "chapter")}
 
             for v in surah.get("array", []):
                 vs = 0.0
@@ -924,7 +924,8 @@ class RAGKnowledge:
                                 "arabic_name": t.get("arabic_name"),
                                 "description": t.get("description", "")[:200],
                             })
-                    all_verses.append({
+                    if matched_topics or vs >= 25:
+                        all_verses.append({
                         "surah_id":          surah.get("id"),
                         "surah_name":        surah.get("name_en", ""),
                         "surah_translation": surah.get("name_translation", ""),
@@ -1100,7 +1101,9 @@ class RAGKnowledge:
         if not any(p in ql for p in [
             "how many words", "how many letters", "how many verses",
             "how many ayat", "word count", "letter count", "verse count",
-            "total words", "total letters", "total ayat","longest surah", "longest chapter", "longest surat","longest verse", "longest ayah", "longest ayat", "shortest verse", "shortest ayah", "shortest ayat","most verses surah", "most verses chapter", "surah with most verses",
+            "total words", "total letters", "total ayat", "total quran", "whole quran",
+            "entire quran", "quran total", "quran statistics", "total stats", "statistics", "stats",
+            "longest surah", "longest chapter", "longest surat", "longest verse", "longest ayah", "longest ayat", "shortest verse", "shortest ayah", "shortest ayat", "most verses surah", "most verses chapter", "surah with most verses",
         ]):
             return None
 
@@ -1520,7 +1523,10 @@ class RAGKnowledge:
         "and daily practice easier, smarter, and more meaningful."
             )
 
-        if any(p in ql for p in ["siratsync features", "app features", "what can it do", "what can you do"]):
+        if any(p in ql for p in [
+            "siratsync features", "app features", "what can it do", "what can you do",
+            "what are the features", "features of siratsync", "features", "list features", "what features"
+        ]):
             return (
                 "✨ **SiratSync Features:**\n"
                 "📖 Quran with multiple translations (English / Kashmiri Tafsir / Urdu)\n"

@@ -64,10 +64,12 @@ def _fallback_actions() -> ActionsPayload:
 async def chat(request: ChatRequest, http_request: Request):
     request_id = getattr(http_request.state, "request_id", "unknown")
 
-    try:
-        logger.info("request_id=%s Chat from user %s", request_id, request.user_id)
+    effective_user_id = getattr(http_request.state, "authenticated_user_id", None) or request.user_id
 
-        cached_response = cache.get(request.message, request.user_id)
+    try:
+        logger.info("request_id=%s Chat from user %s", request_id, effective_user_id)
+
+        cached_response = await cache.get(request.message, effective_user_id)
         if cached_response:
             logger.info("request_id=%s Cache hit — stats: %s", request_id, cache.stats)
             try:
@@ -77,18 +79,18 @@ async def chat(request: ChatRequest, http_request: Request):
                 # and fall through to a fresh generation.
                 logger.warning("request_id=%s Corrupt cache entry, regenerating: %s", request_id, e)
 
-        memory.add_message(request.user_id, "user", request.message)
+        await memory.add_message(effective_user_id, "user", request.message)
 
-        server_context = memory.get_context(request.user_id, max_messages=6)
+        server_context = await memory.get_context(effective_user_id, max_messages=6)
         conversation_context = request.context if request.context else server_context
-        last_question = memory.get_last_question(request.user_id)
+        last_question = await memory.get_last_question(effective_user_id)
 
         if detect_prompt_injection(request.message) or (
             request.context and detect_prompt_injection(request.context)
         ):
             logger.warning(
                 "request_id=%s Possible prompt injection pattern detected for user %s",
-                request_id, request.user_id,
+                request_id, effective_user_id,
             )
 
         safe_message = sanitize_user_text(request.message, max_length=settings.MAX_MESSAGE_LENGTH)
@@ -97,6 +99,17 @@ async def chat(request: ChatRequest, http_request: Request):
             if conversation_context
             else conversation_context
         )
+
+        # Deduplicate trailing current message if client context already included it
+        if safe_context and safe_message:
+            context_lines = [line for line in safe_context.split("\n") if line.strip()]
+            if context_lines and (
+                context_lines[-1].lower() == safe_message.lower()
+                or context_lines[-1].lower() == f"user: {safe_message.lower()}"
+                or context_lines[-1].lower().endswith(safe_message.lower())
+            ):
+                context_lines.pop()
+            safe_context = "\n".join(context_lines) if context_lines else None
 
         intent_result = intent_detector.detect(request.message)
         primary_intent = intent_result.primary_intent
@@ -121,9 +134,9 @@ async def chat(request: ChatRequest, http_request: Request):
             request_id, primary_intent, sub_intent, sentiment,
         )
 
-        knowledge = rag_service.retrieve(request.message, top_k=5, user_id=request.user_id)
+        knowledge = rag_service.retrieve(request.message, top_k=5, user_id=effective_user_id)
 
-        user_profile = memory.get_user_profile(request.user_id)
+        user_profile = await memory.get_user_profile(effective_user_id)
         user_profile["urgency"] = urgency
         user_profile["sentiment"] = sentiment
 
@@ -134,7 +147,7 @@ async def chat(request: ChatRequest, http_request: Request):
             user_profile,
             context=conversation_context,
             last_question=last_question,
-            user_id=request.user_id,
+            user_id=effective_user_id,
         )
 
         used_llm = False
@@ -223,7 +236,7 @@ async def chat(request: ChatRequest, http_request: Request):
         elif user_profile.get("consistency") == "medium":
             motivational_quote = get_motivational_quote("medium")
 
-        memory.add_message(request.user_id, "assistant", reply)
+        await memory.add_message(effective_user_id, "assistant", reply)
 
         is_verse_query = _is_verse_or_surah_query(message_lower)
         is_quran_topic = rag_service._is_quran_topic_query(message_lower)
@@ -250,9 +263,9 @@ async def chat(request: ChatRequest, http_request: Request):
         }
 
         try:
-            cache.set(
+            await cache.set(
                 request.message,
-                request.user_id,
+                effective_user_id,
                 json_module.dumps(response_data),
                 ttl_minutes=settings.RESPONSE_CACHE_TTL_MINUTES,
             )
@@ -307,7 +320,7 @@ _SRC_KASHMIRI = {
 _SRC_AI = {
     "type": "ai_generated",
     "label": "Sirat Assistant",
-    "detail": "Groq GPT-OSS-20B",
+    "detail": f"Groq {settings.GROQ_MODEL}",
     "icon": "ai",
 }
 _SRC_KB = {

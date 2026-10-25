@@ -39,6 +39,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings.validate()
 
+    # Initialize memory service connection
+    try:
+        from app.services.memory_service import memory
+
+        await memory.initialize()
+    except Exception as e:
+        logger.warning("Failed to initialize memory service at startup: %s", e)
+
     # Preload the Quran index at startup rather than on first user request.
     try:
         from app.services.rag_service import rag_service
@@ -61,6 +69,13 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️ keep_alive module not found")
 
     yield
+
+    try:
+        from app.services.memory_service import memory
+
+        await memory.close()
+    except Exception:
+        pass
 
     logger.info("👋 SiratSync API shutting down")
 
