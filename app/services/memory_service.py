@@ -69,12 +69,9 @@ class MemoryManager:
                 port = int(os.environ.get("UPSTASH_REDIS_PORT", 6379))
 
                 if host and password:
-                    self._pool = aioredis.ConnectionPool(
-                        host=host,
-                        port=port,
-                        password=password,
-                        ssl=True,
-                        ssl_cert_reqs=None,
+                    scheme = "rediss" if settings.REDIS_SSL or True else "redis"
+                    self._pool = aioredis.ConnectionPool.from_url(
+                        f"{scheme}://:{password}@{host}:{port}",
                         decode_responses=True,
                         socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
                         socket_connect_timeout=settings.REDIS_SOCKET_TIMEOUT,
@@ -133,6 +130,16 @@ class MemoryManager:
             self._last_health_result = True
             return True
         except Exception as e:
+            if "event loop is closed" in str(e).lower():
+                try:
+                    self._initialize_redis()
+                    if self.redis is not None:
+                        await self.redis.ping()
+                        self._last_health_check = now
+                        self._last_health_result = True
+                        return True
+                except Exception:
+                    pass
             logger.warning("Redis health check failed: %s", e)
             self._last_health_check = now
             self._last_health_result = False
@@ -214,6 +221,10 @@ class MemoryManager:
         with self._fallback_lock:
             return list(self.fallback_sessions.get(user_id, [])[-count:])
 
+    async def get_recent_messages(self, user_id: str, count: int = 6) -> list[dict]:
+        """Return the most recent messages as structured dicts: [{'role': ..., 'content': ...}, ...]."""
+        return await self._get_recent_messages(user_id, count)
+
     async def get_context(self, user_id: str, max_messages: int = 8) -> str:
         messages = await self._get_recent_messages(user_id, max_messages)
         if not messages:
@@ -223,16 +234,19 @@ class MemoryManager:
             for msg in messages
         )
 
-    async def get_last_question(self, user_id: str) -> str | None:
-        messages = await self._get_recent_messages(user_id, 5)
+    async def get_last_question(self, user_id: str, exclude_current: str | None = None) -> str | None:
+        messages = await self._get_recent_messages(user_id, 6)
         for msg in reversed(messages):
             if msg.get("role") == "user":
-                return msg.get("content")
+                content = msg.get("content", "")
+                if exclude_current and content.strip().lower() == exclude_current.strip().lower():
+                    continue
+                return content
         return None
 
     async def get_last_bot_message(self, user_id: str) -> str | None:
         """Most recent assistant reply."""
-        messages = await self._get_recent_messages(user_id, 5)
+        messages = await self._get_recent_messages(user_id, 6)
         for msg in reversed(messages):
             if msg.get("role") == "assistant":
                 return msg.get("content")
@@ -324,6 +338,13 @@ class MemoryManager:
                 logger.info("Cleared Redis data for user: %s", user_id)
             except Exception as e:
                 logger.error("Failed to clear Redis data for %s: %s", user_id, e)
+                if "event loop is closed" in str(e).lower():
+                    try:
+                        self._initialize_redis()
+                        if self.redis is not None:
+                            await self.redis.delete(f"sirat:chat:{user_id}", f"sirat:stats:{user_id}", f"sirat:active:{user_id}")
+                    except Exception:
+                        pass
 
         with self._fallback_lock:
             self.fallback_sessions.pop(user_id, None)

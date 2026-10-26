@@ -1689,11 +1689,15 @@ class RAGKnowledge:
             None,
         )
 
-        query_words = set(ql.split())
+        query_words = _meaningful_words(ql)
+        if not query_words and not priority_cat:
+            return ""
+
         scored: list[tuple[float, str]] = []
 
         for item in self.search_index:
-            score = float(len(query_words & item["keywords"]))
+            matching = query_words & item["keywords"]
+            score = float(len(matching)) * 2.0
             if priority_cat and priority_cat in item["category"].lower():
                 score += 15
             if isinstance(item["item"], dict):
@@ -1701,7 +1705,7 @@ class RAGKnowledge:
                     val = item["item"].get(field, "").lower()
                     if val and val in ql:
                         score += 8
-            if score <= 0:
+            if score < 4.0:
                 continue
 
             d   = item["item"]
@@ -1718,23 +1722,7 @@ class RAGKnowledge:
 
         scored.sort(key=lambda x: x[0], reverse=True)
         if not scored:
-            return (
-                "📖 **I’m here to help with Islamic guidance and everything SiratSync offers.**\n\n"
-                "✨ You can ask me about:\n"
-                "🕌 Salah, Prayer Times & Adhan\n"
-                "📖 Quran, Translations & Tafsir\n"
-                "📿 Duas, Dhikr & Daily Islamic Practices\n"
-                "📚 Hadith Collections & Sunnah\n"
-                "🤖 Sirat Assistant & AI Islamic Learning\n"
-                "📝 AI Post Summarization\n"
-                "⭐ Islamic Habit Tracking\n"
-                "🧭 Qibla Direction\n"
-                "🌙 Ramadan Mode & Islamic Calendar\n"
-                "👥 SiratSync Community\n"
-                "🎯 Learn Salah Step-by-Step\n"
-                "📿 Digital Tasbih & More\n\n"
-                "Ask anything related to Islam, daily worship, or SiratSync features — and I’ll do my best to assist you clearly and respectfully."
-            )
+            return ""
 
         result = "\n\n".join(text for _, text in scored[:top_k])
         return result[:2500] + "..." if len(result) > 2500 else result

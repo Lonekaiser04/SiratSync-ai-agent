@@ -133,6 +133,12 @@ class RedisResponseCache:
             return None
 
     async def get(self, message: str, user_id: str = "default", scope: str = "chat") -> Optional[str]:
+        # Check local L1 cache first for fastest possible hit and event-loop independence
+        local_hit = await self._local_fallback.get(message, user_id, scope)
+        if local_hit is not None:
+            self.stats["hits"] += 1
+            return local_hit
+
         redis_client = self._get_redis()
         if redis_client is not None:
             key = _cache_key(message, user_id, scope)
@@ -140,13 +146,16 @@ class RedisResponseCache:
                 value = await redis_client.get(key)
                 if value is not None:
                     self.stats["hits"] += 1
+                    # Populate local L1 cache on Redis hit
+                    await self._local_fallback.set(message, user_id, value, 60, scope)
                     return value
                 self.stats["misses"] += 1
                 return None
             except Exception as e:
                 logger.warning("Redis cache GET failed, falling back to local: %s", e)
 
-        return await self._local_fallback.get(message, user_id, scope)
+        self.stats["misses"] += 1
+        return None
 
     async def set(
         self,
@@ -159,16 +168,16 @@ class RedisResponseCache:
         if scope == "chat" and _is_personalized(message):
             return
 
+        # Always populate local L1 cache
+        await self._local_fallback.set(message, user_id, response, ttl_minutes, scope)
+
         redis_client = self._get_redis()
         if redis_client is not None:
             key = _cache_key(message, user_id, scope)
             try:
                 await redis_client.set(key, response, ex=timedelta(minutes=ttl_minutes))
-                return
             except Exception as e:
                 logger.warning("Redis cache SET failed, falling back to local: %s", e)
-
-        await self._local_fallback.set(message, user_id, response, ttl_minutes, scope)
 
     async def delete(self, message: str, user_id: str = "default", scope: str = "chat") -> None:
         redis_client = self._get_redis()

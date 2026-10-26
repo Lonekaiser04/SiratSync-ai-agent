@@ -59,7 +59,7 @@ class Settings:
     # ── Groq / LLM ───────────────────────────────────────────────────────
     GROQ_API_KEY: str | None = os.environ.get("GROQ_API_KEY")
     GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
-    FALLBACK_GROQ_MODEL: str = os.environ.get("FALLBACK_GROQ_MODEL", "openai/gpt-oss-20b")
+    FALLBACK_GROQ_MODEL: str = os.environ.get("FALLBACK_GROQ_MODEL", "openai/gpt-oss-120b")
     LLM_TIMEOUT_SECONDS: float = float(os.environ.get("LLM_TIMEOUT_SECONDS", "20"))
     LLM_MAX_RETRIES: int = _env_int("LLM_MAX_RETRIES", 2)
 
@@ -154,3 +154,5 @@ GROQ_API_KEY = settings.GROQ_API_KEY
 RATE_LIMIT_MAX_KEYS = settings.RATE_LIMIT_MAX_KEYS
 RATE_LIMIT_RPM = settings.RATE_LIMIT_RPM
 SUMMARY_CACHE_PREFIX = settings.SUMMARY_CACHE_PREFIX
+GROQ_MODEL = settings.GROQ_MODEL
+FALLBACK_GROQ_MODEL = settings.FALLBACK_GROQ_MODEL

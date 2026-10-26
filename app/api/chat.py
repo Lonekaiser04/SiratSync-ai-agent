@@ -21,6 +21,7 @@ from app.models.request_models import ChatRequest
 from app.models.response_models import ActionsPayload, ChatResponse
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.services.intent_service import intent_detector
+from app.services.llm_service import llm_service
 from app.services.memory_service import memory
 from app.services.rag_service import rag_service
 from app.utils.cache import cache
@@ -79,11 +80,14 @@ async def chat(request: ChatRequest, http_request: Request):
                 # and fall through to a fresh generation.
                 logger.warning("request_id=%s Corrupt cache entry, regenerating: %s", request_id, e)
 
-        await memory.add_message(effective_user_id, "user", request.message)
-
+        # Capture prior conversational context and previous turns BEFORE registering current message
+        last_question = await memory.get_last_question(effective_user_id, exclude_current=request.message)
+        last_bot_message = await memory.get_last_bot_message(effective_user_id)
+        recent_messages = await memory.get_recent_messages(effective_user_id, count=6)
         server_context = await memory.get_context(effective_user_id, max_messages=6)
         conversation_context = request.context if request.context else server_context
-        last_question = await memory.get_last_question(effective_user_id)
+
+        await memory.add_message(effective_user_id, "user", request.message)
 
         if detect_prompt_injection(request.message) or (
             request.context and detect_prompt_injection(request.context)
@@ -119,15 +123,18 @@ async def chat(request: ChatRequest, http_request: Request):
 
         message_lower = request.message.lower().strip()
 
-        if message_lower in _CONFIRM_WORDS:
+        if message_lower in _CONFIRM_WORDS or message_lower in {"tell me more", "learn more", "more details", "what else"}:
             lq = (last_question or "").lower()
+            lbm = (last_bot_message or "").lower()
             cc = (conversation_context or "").lower()
-            if "features" in lq or "learn more" in lq or "features" in cc:
+            if "features" in lbm or "features" in lq or "learn more" in lbm or "features" in cc:
                 primary_intent = "app_features_inquiry"
-            elif "salah" in lq or "prayer" in lq:
+            elif "salah" in lbm or "salah" in lq or "prayer" in lbm or "prayer" in lq:
                 primary_intent, sub_intent = "salah", "learn_more"
-            elif "quran" in lq:
+            elif "quran" in lbm or "quran" in lq:
                 primary_intent, sub_intent = "quran", "learn_more"
+            elif "hadith" in lbm or "hadith" in lq:
+                primary_intent, sub_intent = "hadith", "learn_more"
 
         logger.info(
             "request_id=%s Intent: %s | Sub: %s | Sentiment: %s",
@@ -135,6 +142,8 @@ async def chat(request: ChatRequest, http_request: Request):
         )
 
         knowledge = rag_service.retrieve(request.message, top_k=5, user_id=effective_user_id)
+        if not knowledge or knowledge.strip() == "(No specific knowledge retrieved)":
+            knowledge = ""
 
         user_profile = await memory.get_user_profile(effective_user_id)
         user_profile["urgency"] = urgency
@@ -175,45 +184,38 @@ async def chat(request: ChatRequest, http_request: Request):
                 question=safe_message,
             )
 
+            # Construct messages array preserving multi-turn context
+            llm_messages = [{"role": "system", "content": prompt}]
+            if recent_messages:
+                for msg in recent_messages:
+                    m_role = msg.get("role")
+                    m_content = (msg.get("content") or "").strip()
+                    if m_role in ("user", "assistant") and m_content:
+                        if m_role == "user" and m_content.lower() == safe_message.lower():
+                            continue
+                        llm_messages.append({"role": m_role, "content": m_content})
+            llm_messages.append({"role": "user", "content": safe_message})
+
             temperature = 0.3 if primary_intent in ("technical", "factual") else 0.6
             max_tokens = 350 if urgency == "high" else 500
 
             try:
-                try:
-                    llm_response = await llm.chat.completions.create(
-                        model=effective_model,
-                        messages=[
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": safe_message},
-                        ],
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        timeout=settings.LLM_TIMEOUT_SECONDS,
+                llm_result = await llm_service.generate_completion(
+                    messages=llm_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    client=llm,
+                    request_id=request_id,
+                )
+                effective_model = llm_result.model_used
+                reply = llm_result.content
+                if llm_result.is_fallback:
+                    logger.warning(
+                        "request_id=%s Configured Groq model %s not found (404). Falling back to %s",
+                        request_id,
+                        settings.GROQ_MODEL,
+                        effective_model,
                     )
-                except NotFoundError as nfe:
-                    if effective_model != settings.FALLBACK_GROQ_MODEL:
-                        logger.warning(
-                            "request_id=%s Configured Groq model %s not found (404). Falling back to %s: %s",
-                            request_id,
-                            effective_model,
-                            settings.FALLBACK_GROQ_MODEL,
-                            nfe,
-                        )
-                        effective_model = settings.FALLBACK_GROQ_MODEL
-                        llm_response = await llm.chat.completions.create(
-                            model=effective_model,
-                            messages=[
-                                {"role": "system", "content": prompt},
-                                {"role": "user", "content": safe_message},
-                            ],
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            timeout=settings.LLM_TIMEOUT_SECONDS,
-                        )
-                    else:
-                        raise
-
-                reply = (llm_response.choices[0].message.content or "").strip()
                 if reply:
                     used_llm = True
                 else:
