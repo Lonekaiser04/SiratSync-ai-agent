@@ -170,12 +170,6 @@ async def chat(request: ChatRequest, http_request: Request):
             reply = rag_service.retrieve(request.message, top_k=5, user_id=request.user_id)
             logger.info("request_id=%s Verse/Surah RAG response used — LLM bypassed", request_id)
 
-        elif rag_service._is_quran_topic_query(message_lower):
-            reply = knowledge or rag_service.retrieve(
-                request.message, top_k=5, user_id=request.user_id
-            )
-            logger.info("request_id=%s Quran topic RAG response used", request_id)
-
         else:
             prompt = SYSTEM_PROMPT.format(
                 context=safe_context or "(No previous conversation)",

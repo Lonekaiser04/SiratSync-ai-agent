@@ -361,17 +361,13 @@ async def get_quick_response(
         ]
 
     if any(t in message_lower for t in BROAD_TOPIC_TRIGGERS):
-        direct_result = rag_service.get_direct_answer(message) or rag_service._handle_quran_topic_query(message)
+        direct_result = rag_service.get_direct_answer(message)
         if direct_result and "couldn't find" not in direct_result.lower():
-            logger.info("⚡ Topic query — direct RAG (no LLM)")
+            logger.info("⚡ Direct factual topic answer — no LLM")
             return direct_result
 
-        rag_data = rag_service.get_rag_data_for_llm(message, user_id=user_id)
-        if rag_data:
-            logger.info("🤖 RAG data found → LLM enrichment")
-            return await _call_llm_with_rag(message, rag_data, user_profile)
-
-        logger.info("🤖 No RAG data for quran query → main LLM")
+        # For conceptual Islamic questions (e.g. modesty, patience, justice), allow the main
+        # pipeline in chat.py to pass retrieved Quran & Hadith knowledge to LLM for full grounded explanation.
         return None
 
     CORRECTION_WORDS = {"wrong", "incorrect", "not correct", "that's wrong", "mistake"}

@@ -9,16 +9,15 @@ from typing import Optional
 
 # ── Constants / Maps ──────────────────────────────────────────────────────────
 _STOP_WORDS: set[str] = {
-    "what", "does", "the", "quran", "say", "about", "in", "islam",
-    "islamic", "view", "on", "according", "to", "i", "want", "know",
+    "what", "does", "the", "say", "about", "in",
+    "view", "on", "according", "to", "i", "want", "know",
     "tell", "me", "show", "how", "can", "do", "is", "it", "a", "an",
     "and", "or", "of", "for", "from", "with", "that", "this", "are",
     "was", "were", "be", "been", "by", "at", "as", "up", "if", "so",
     "he", "she", "they", "we", "you", "his", "her", "its", "their",
     "my", "your", "all", "any", "not", "no", "but", "had", "has",
     "have", "will", "would", "could", "should", "may", "might",
-    "allah", "prophet", "surah", "verse", "ayat", "ayah",
-    "step", "please", "give", "verses", "ruling", "get",
+    "step", "please", "give", "ruling", "get", "many",
 }
 
 _TRANSLIT: dict[str, str] = {
@@ -770,6 +769,129 @@ class RAGKnowledge:
             "judgment day":       [(82, 1), (99, 1), (2, 281)],
             "qiyamah":            [(82, 1), (99, 1), (2, 281)],
         }
+
+        KNOWN_HADITH_MAPPINGS: dict[str, list[dict]] = {
+            "modesty": [
+                {
+                    "text": "Al-Haya' (modesty/chastity) is a branch of faith (Iman).",
+                    "source": "Sahih al-Bukhari 24, Sahih Muslim 35",
+                    "narrator": "Abu Hurairah",
+                },
+                {
+                    "text": "Modesty brings forth nothing but good.",
+                    "source": "Sahih al-Bukhari 6117, Sahih Muslim 37",
+                    "narrator": "Imran ibn Husain",
+                },
+            ],
+            "hijab": [
+                {
+                    "text": "Al-Haya' (modesty/chastity) is a branch of faith (Iman).",
+                    "source": "Sahih al-Bukhari 24, Sahih Muslim 35",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "patience": [
+                {
+                    "text": "No fatigue, illness, anxiety, sorrow, harm, or depression befalls a Muslim — even the prick of a thorn — except that Allah expiates some of his sins by it.",
+                    "source": "Sahih al-Bukhari 5641, Sahih Muslim 2573",
+                    "narrator": "Abu Hurairah and Abu Sa'id al-Khudri",
+                },
+                {
+                    "text": "How wonderful is the affair of the believer, for his affairs are all good... if prosperity comes to him, he gives thanks and that is good for him; and if adversity befalls him, he is patient and that is good for him.",
+                    "source": "Sahih Muslim 2999",
+                    "narrator": "Suhaib",
+                },
+            ],
+            "sabr": [
+                {
+                    "text": "No fatigue, illness, anxiety, sorrow, harm, or depression befalls a Muslim — even the prick of a thorn — except that Allah expiates some of his sins by it.",
+                    "source": "Sahih al-Bukhari 5641, Sahih Muslim 2573",
+                    "narrator": "Abu Hurairah and Abu Sa'id al-Khudri",
+                },
+            ],
+            "parents": [
+                {
+                    "text": "A man asked: O Messenger of Allah, who is most deserving of my good companionship? The Prophet replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your father.'",
+                    "source": "Sahih al-Bukhari 5971, Sahih Muslim 2548",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "mother": [
+                {
+                    "text": "A man asked: O Messenger of Allah, who is most deserving of my good companionship? The Prophet replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your mother.' The man asked: 'Then who?' He replied: 'Your father.'",
+                    "source": "Sahih al-Bukhari 5971, Sahih Muslim 2548",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "charity": [
+                {
+                    "text": "Charity does not decrease wealth, and Allah increases the honor of a person who pardons, and no one humbles himself for Allah except that Allah elevates him.",
+                    "source": "Sahih Muslim 2588",
+                    "narrator": "Abu Hurairah",
+                },
+                {
+                    "text": "Your smile in the face of your brother is an act of charity.",
+                    "source": "Jami` at-Tirmidhi 1956",
+                    "narrator": "Abu Dharr",
+                },
+            ],
+            "sadaqah": [
+                {
+                    "text": "Charity does not decrease wealth, and Allah increases the honor of a person who pardons, and no one humbles himself for Allah except that Allah elevates him.",
+                    "source": "Sahih Muslim 2588",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "forgiveness": [
+                {
+                    "text": "Allah is more pleased with the repentance of His servant than one of you who unexpectedly finds his lost riding camel in a barren desert.",
+                    "source": "Sahih Muslim 2749",
+                    "narrator": "Anas ibn Malik",
+                },
+            ],
+            "repentance": [
+                {
+                    "text": "Allah is more pleased with the repentance of His servant than one of you who unexpectedly finds his lost riding camel in a barren desert.",
+                    "source": "Sahih Muslim 2749",
+                    "narrator": "Anas ibn Malik",
+                },
+            ],
+            "honesty": [
+                {
+                    "text": "Truthfulness leads to righteousness, and righteousness leads to Paradise. A person continues to tell the truth until he is recorded with Allah as truthful.",
+                    "source": "Sahih al-Bukhari 6094, Sahih Muslim 2607",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "knowledge": [
+                {
+                    "text": "Whoever travels a path in search of knowledge, Allah will make easy for him a path to Paradise.",
+                    "source": "Sahih Muslim 2699",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "anger": [
+                {
+                    "text": "The strong person is not the one who overcomes people by his physical strength, but the one who controls himself while in a fit of rage.",
+                    "source": "Sahih al-Bukhari 6114, Sahih Muslim 2609",
+                    "narrator": "Abu Hurairah",
+                },
+            ],
+            "marriage": [
+                {
+                    "text": "O young people, whoever among you can afford it, let him get married, for it lowers the gaze and guards chastity.",
+                    "source": "Sahih al-Bukhari 5063, Sahih Muslim 1400",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "nikah": [
+                {
+                    "text": "O young people, whoever among you can afford it, let him get married, for it lowers the gaze and guards chastity.",
+                    "source": "Sahih al-Bukhari 5063, Sahih Muslim 1400",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+        }
         
         best_key_match = None
         best_key_len   = 0
@@ -785,8 +907,9 @@ class RAGKnowledge:
                 if verse:
                     verse["relevance_score"] = 100
                     priority_verses.append(verse)
-            if priority_verses:
-                return {"surahs": [], "verses": priority_verses}
+            priority_hadiths = KNOWN_HADITH_MAPPINGS.get(best_key_match, [])
+            if priority_verses or priority_hadiths:
+                return {"surahs": [], "verses": priority_verses, "hadiths": priority_hadiths}
 
         surah_scores: list[tuple[float, dict]] = []
 
@@ -1383,8 +1506,9 @@ class RAGKnowledge:
         result  = self.search_quran_by_topic(query)
         surahs  = result.get("surahs", [])
         verses  = result.get("verses", [])
+        hadiths = result.get("hadiths", [])
 
-        if not surahs and not verses:
+        if not surahs and not verses and not hadiths:
             return self._fallback_response()
 
         parts = []
@@ -1421,6 +1545,12 @@ class RAGKnowledge:
                 if v.get("kashmiri"):
                     ks = v["kashmiri"]
                     parts.append(f"🏔️ **Kashmiri:**\n{ks[:200]}{'...' if len(ks) > 200 else ''}")
+
+        if hadiths:
+            parts.append("\n📚 **Verified Hadith:**")
+            for h in hadiths[:3]:
+                narrator_str = f" (Narrated by {h['narrator']})" if h.get("narrator") else ""
+                parts.append(f"• \"{h['text']}\"\n  — **{h['source']}**{narrator_str}")
 
         parts.append("\n🤲 _For complete tafsir, open the full surah in the SiratSync app._")
         return "\n".join(parts)
@@ -1485,6 +1615,80 @@ class RAGKnowledge:
     # ═════════════════════════════════════════════════════════════════════════
     def get_direct_answer(self, query: str) -> Optional[str]:
         ql = query.lower()
+
+        # ── Direct Islamic Factual Knowledge ─────────────────────────────
+        if any(p in ql for p in [
+            "how many prophets", "prophets mentioned in the quran", "prophets in quran",
+            "prophets named in the quran", "names of prophets in quran", "list of prophets",
+            "prophets by name in the quran", "how many ambiya", "prophets are mentioned by name",
+            "prophets mentioned by name",
+        ]):
+            return (
+                "📜 **Prophets Mentioned by Name in the Holy Quran:**\n\n"
+                "There are exactly **25 prophets** mentioned by name in the Holy Quran:\n\n"
+                "1. **Adam** (آدم)\n"
+                "2. **Idris** / Enoch (إدريس)\n"
+                "3. **Nuh** / Noah (نوح)\n"
+                "4. **Hud** (هود)\n"
+                "5. **Salih** (صالح)\n"
+                "6. **Ibrahim** / Abraham (إبراهيم)\n"
+                "7. **Lut** / Lot (لوط)\n"
+                "8. **Isma'il** / Ishmael (إسماعيل)\n"
+                "9. **Ishaq** / Isaac (إسحاق)\n"
+                "10. **Ya'qub** / Jacob (يعقوب)\n"
+                "11. **Yusuf** / Joseph (يوسف)\n"
+                "12. **Ayyub** / Job (أيوب)\n"
+                "13. **Shu'ayb** / Jethro (شعيب)\n"
+                "14. **Musa** / Moses (موسى)\n"
+                "15. **Harun** / Aaron (هارون)\n"
+                "16. **Dhul-Kifl** / Ezekiel (ذو الكفل)\n"
+                "17. **Dawud** / David (داود)\n"
+                "18. **Sulayman** / Solomon (سليمان)\n"
+                "19. **Ilyas** / Elijah (إلياس)\n"
+                "20. **Al-Yasa** / Elisha (اليسع)\n"
+                "21. **Yunus** / Jonah (يونس)\n"
+                "22. **Zakariyya** / Zechariah (زكريا)\n"
+                "23. **Yahya** / John the Baptist (يحيى)\n"
+                "24. **Isa** / Jesus (عيسى)\n"
+                "25. **Muhammad** (peace be upon them all - محمد ﷺ)\n\n"
+                "📌 _While Allah sent many prophets to humanity throughout history, these 25 are explicitly mentioned by name in the Holy Quran._"
+            )
+
+        if any(p in ql for p in ["first prophet in islam", "who was the first prophet", "first prophet"]):
+            return (
+                "🌱 **The First Prophet in Islam:**\n\n"
+                "The first prophet of Allah was **Prophet Adam (peace be upon him)** (آدم عليه السلام), who was also the first human being created by Allah."
+            )
+
+        if any(p in ql for p in ["last prophet in islam", "final prophet in islam", "seal of the prophets", "who was the last prophet", "final prophet"]):
+            return (
+                "🌟 **The Final Prophet in Islam:**\n\n"
+                "The final prophet and seal of the prophets (Khatam an-Nabiyyin) is **Prophet Muhammad (peace and blessings be upon him)** (محمد ﷺ), as affirmed in Surah Al-Ahzab (33:40)."
+            )
+
+        if any(p in ql for p in ["woman is mentioned by name", "woman mentioned by name", "woman named", "which woman is named"]):
+            return (
+                "🌸 **Woman Mentioned by Name in the Holy Quran:**\n\n"
+                "**Maryam (Mary, mother of Jesus - peace be upon her)** is the **only woman** mentioned by name in the Holy Quran. Surah 19 of the Quran is named 'Surah Maryam' in her honor."
+            )
+
+        if any(p in ql for p in ["companion is mentioned by name", "companion mentioned by name", "companion named", "sahabi named", "sahabi is mentioned by name"]):
+            return (
+                "🌟 **Companion (Sahabi) Mentioned by Name in the Holy Quran:**\n\n"
+                "**Zayd ibn Harithah (may Allah be pleased with him)** is the **only companion (Sahabi)** explicitly named in the Quran, in Surah Al-Ahzab (33:37)."
+            )
+
+        if any(p in ql for p in ["surah without bismillah", "does not begin with bismillah", "doesn't start with bismillah"]):
+            return (
+                "📖 **Surah Without Bismillah:**\n\n"
+                "**Surah At-Tawbah (Surah 9)** is the only Surah in the Holy Quran that does not begin with _Bismillah ir-Rahman ir-Rahim_."
+            )
+
+        if any(p in ql for p in ["two bismillahs", "surah with two bismillah", "bismillah twice in quran"]):
+            return (
+                "📖 **Surah With Two Bismillahs:**\n\n"
+                "**Surah An-Naml (Surah 27)** contains two Bismillahs: at its opening and in verse 30 (27:30) within the letter from Prophet Sulayman (Solomon) to the Queen of Sheba."
+            )
 
         if any(p in ql for p in [
             "who is kaiser", "who made", "who created", "who built",
@@ -1555,7 +1759,7 @@ class RAGKnowledge:
                 "and Ramadan special timings."
             )
 
-        if "quran" in ql and any(p in ql for p in ["read", "translation", "open"]):
+        if any(p in ql for p in ["quran module", "quran feature", "siratsync quran", "quran in siratsync", "open quran"]):
             return (
             "📖 **The Quran Module in SiratSync** is thoughtfully designed to offer a smooth, "
             "immersive, and spiritually enriching Quran experience.\n\n"
@@ -1570,7 +1774,7 @@ class RAGKnowledge:
             "comfort, and accessibility in one powerful experience."
         )
 
-        if any(p in ql for p in ["habit", "streak", "consistent", "track ibadah"]):
+        if any(p in ql for p in ["habit tracker", "habit streak", "siratsync habit", "track ibadah", "habit feature"]):
             return (
                 "⭐ The Habit Tracker helps you build consistency in Salah, Quran "
                 "reading, Fasting, and Dhikr. Set daily goals, earn streaks, and view "
@@ -1578,7 +1782,7 @@ class RAGKnowledge:
                 "are those done consistently, even if small.'_ (Sahih Bukhari)"
             )
 
-        if any(p in ql for p in ["hadith", "bukhari", "sahih", "sunnah"]):
+        if any(p in ql for p in ["hadith module", "hadith feature", "siratsync hadith", "hadith in siratsync"]):
             return (
                 "📚 **The Hadith Module in SiratSync** provides authentic access to essential "
                 "Hadith collections, helping users learn and reflect on the teachings of Prophet Muhammad ﷺ.\n\n"
@@ -1623,7 +1827,7 @@ class RAGKnowledge:
                 "fasting reminders, and special Qiyam notifications for a blessed month."
             )
 
-        if "offline" in ql:
+        if any(p in ql for p in ["siratsync offline", "app offline", "works offline", "offline features", "offline access in siratsync"]):
             return (
                 "📴 **SiratSync Offline Access** ensures your essential Islamic resources remain "
                 "available anytime, anywhere — even without an internet connection.\n\n"
