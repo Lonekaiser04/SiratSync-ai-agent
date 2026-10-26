@@ -61,22 +61,84 @@ _ROMAN_URDU_WORDS = {
 }
 
 
-def detect_content_language(text: str) -> str:
-    """Detects if content is Urdu, Arabic, Roman Urdu, or English."""
-    arabic_script_chars = [c for c in text if "\u0600" <= c <= "\u06FF" or "\u0750" <= c <= "\u077F"]
-    if len(arabic_script_chars) >= 4:
-        if any(c in _URDU_SPECIFIC_CHARS for c in text):
-            return "Urdu"
-        words = set(text.split())
-        if words.intersection(_URDU_WORDS):
-            return "Urdu"
-        return "Arabic"
+def extract_arabic_sacred_segments(text: str) -> list[str]:
+    """
+    Extracts contiguous Arabic text segments (Quranic verses, Hadith, duas, or Arabic phrases)
+    from content while ignoring pure Urdu commentary words.
+    """
+    if not text:
+        return []
+    # Pattern to match continuous Arabic script tokens
+    pattern = re.compile(
+        r"[\u0600-\u064A\u064B-\u065F\u0670-\u06D3\u06D5-\u06ED\uFD3E\uFD3F\uFDF2\uFDFD]+"
+        r"(?:\s+[\u0600-\u064A\u064B-\u065F\u0670-\u06D3\u06D5-\u06ED\uFD3E\uFD3F\uFDF2\uFDFD]+)*"
+    )
+    segments: list[str] = []
+    for match in pattern.finditer(text):
+        chunk = match.group(0).strip()
+        if len(chunk) < 6:
+            continue
+        if any(c in _URDU_SPECIFIC_CHARS for c in chunk):
+            continue
+        words = chunk.split()
+        if len(words) >= 2 and set(words).issubset(_URDU_WORDS):
+            continue
+        segments.append(chunk)
+    return segments
 
+
+def analyze_post_language(text: str) -> tuple[str, bool, str, list[str]]:
+    """
+    Analyzes post content for language composition and mixed-language structure.
+    Returns (lang_label, is_mixed, commentary_lang, arabic_sacred_segments).
+    """
+    arabic_chars = [c for c in text if "\u0600" <= c <= "\u06FF" or "\u0750" <= c <= "\u077F"]
+    arabic_sacred = extract_arabic_sacred_segments(text)
+    latin_words = re.findall(r"\b[a-zA-Z]{3,}\b", text)
+    urdu_words = [w for w in text.split() if w in _URDU_WORDS]
+    has_urdu_chars = any(c in _URDU_SPECIFIC_CHARS for c in text)
+
+    # 1. Mixed English + Arabic
+    if len(latin_words) >= 4 and len(arabic_sacred) > 0:
+        words_lower = set(re.findall(r"\b[a-z]+\b", text.lower()))
+        roman_urdu_matches = words_lower.intersection(_ROMAN_URDU_WORDS)
+        if len(roman_urdu_matches) >= 3:
+            return "Mixed (Roman Urdu/Arabic)", True, "Roman Urdu", arabic_sacred
+        return "Mixed (English/Arabic)", True, "English", arabic_sacred
+
+    # 2. Mixed Urdu + Arabic
+    if (has_urdu_chars or len(urdu_words) >= 2) and len(arabic_sacred) > 0:
+        has_tashkeel = any("\u064B" <= c <= "\u065F" or c == "\u0670" for c in "".join(arabic_sacred))
+        if has_tashkeel or any(len(seg.split()) >= 3 for seg in arabic_sacred):
+            return "Mixed (Urdu/Arabic)", True, "Urdu", arabic_sacred
+
+    # 3. Pure Arabic (Quran, Hadith, Duas, or Arabic posts)
+    if len(arabic_chars) >= 6 and not has_urdu_chars and len(urdu_words) == 0 and len(latin_words) < 3:
+        return "Arabic", False, "Arabic", arabic_sacred
+
+    # 4. Pure Urdu
+    if len(arabic_chars) >= 4 and (has_urdu_chars or len(urdu_words) >= 1):
+        return "Urdu", False, "Urdu", []
+
+    # 5. Roman Urdu
     words_lower = set(re.findall(r"\b[a-z]+\b", text.lower()))
     roman_urdu_matches = words_lower.intersection(_ROMAN_URDU_WORDS)
     if len(roman_urdu_matches) >= 3 or (len(words_lower) <= 15 and len(roman_urdu_matches) >= 2):
-        return "Roman Urdu"
+        return "Roman Urdu", False, "Roman Urdu", []
 
+    # 6. Default English
+    return "English", False, "English", []
+
+
+def detect_content_language(text: str) -> str:
+    """Detects if content is Urdu, Arabic, Roman Urdu, or English."""
+    lang, _, _, _ = analyze_post_language(text)
+    if "Urdu" in lang and "Roman" not in lang:
+        return "Urdu"
+    if "Arabic" in lang and "Mixed" not in lang:
+        return "Arabic"
+    if "Roman Urdu" in lang:
+        return "Roman Urdu"
     return "English"
 
 
@@ -117,10 +179,16 @@ def _get_adaptive_max_tokens(is_short_or_length: bool | int) -> int:
     return 450
 
 
-def clean_summary_output(raw_summary: str, original_content: str, target_bullets: int = 0) -> str:
+def clean_summary_output(
+    raw_summary: str,
+    original_content: str,
+    target_bullets: int = 0,
+    preserved_arabic_segments: list[str] | None = None,
+) -> str:
     """
     Strips LLM meta-preambles, formats clean bullet points, ensures complete sentences,
-    removes dangling truncated clauses, and supports multilingual terminal punctuation.
+    removes dangling truncated clauses, supports multilingual terminal punctuation,
+    and preserves sacred Arabic verses/Hadith verbatim.
     """
     summary = raw_summary.strip()
     summary = _PREAMBLE_PATTERN.sub("", summary).strip()
@@ -181,13 +249,19 @@ def clean_summary_output(raw_summary: str, original_content: str, target_bullets
     if target_bullets > 0 and len(cleaned_bullets) > target_bullets:
         cleaned_bullets = cleaned_bullets[:target_bullets]
 
-    if cleaned_bullets:
-        return "\n".join(cleaned_bullets)
+    final_text = "\n".join(cleaned_bullets) if cleaned_bullets else summary
 
-    if summary[-1] not in _TERMINAL_PUNCTUATION:
-        summary += "۔" if any("\u0600" <= c <= "\u06FF" for c in summary) else "."
+    # Ensure preserved sacred Arabic segments are present in mixed-language summaries
+    if preserved_arabic_segments:
+        missing_segments = [
+            seg for seg in preserved_arabic_segments
+            if len(seg) >= 12 and seg not in final_text
+        ]
+        if missing_segments:
+            arabic_prefix = "\n\n".join(missing_segments)
+            final_text = f"{arabic_prefix}\n\n{final_text}"
 
-    return summary
+    return final_text
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -202,9 +276,22 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
         raw_content = request.post_content or ""
         cleaned_content, is_trivial_or_very_short = preprocess_post_content(raw_content)
 
-        # Very short posts: keep unchanged
+        # 1. Very short posts (< 35 chars): keep unchanged
         if is_trivial_or_very_short:
             logger.info("request_id=%s Very short or trivial content — keeping unchanged", request_id)
+            return SummarizeResponse(
+                summary=cleaned_content,
+                original_length=len(raw_content),
+                summary_length=len(cleaned_content),
+            )
+
+        safe_content = sanitize_user_text(cleaned_content, max_length=settings.MAX_POST_CONTENT_LENGTH)
+        lang_label, is_mixed, commentary_lang, arabic_sacred = analyze_post_language(safe_content)
+
+        # 2. Pure Arabic, Quranic verse, Hadith, or dua posts: return unchanged
+        # Rule: "Never summarize, translate, modify, or truncate Arabic text, Quranic verses, Hadith, or duas. Return these texts unchanged."
+        if lang_label == "Arabic":
+            logger.info("request_id=%s Pure Arabic or sacred text post — keeping unchanged", request_id)
             return SummarizeResponse(
                 summary=cleaned_content,
                 original_length=len(raw_content),
@@ -221,21 +308,25 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             except (json_module.JSONDecodeError, TypeError, ValueError) as e:
                 logger.warning("request_id=%s Corrupt summarize cache entry, regenerating: %s", request_id, e)
 
-        safe_content = sanitize_user_text(cleaned_content, max_length=settings.MAX_POST_CONTENT_LENGTH)
-        lang = detect_content_language(safe_content)
         word_count = len(safe_content.split())
-        is_short = word_count <= 120 or len(safe_content) <= 650
+        is_short = word_count <= 80 and len(safe_content) <= 500
+        target_bullets = 2 if is_short else 3
 
-        if is_short:
-            target_bullets = 2
+        if is_mixed:
             format_instruction = (
-                f"Generate EXACTLY 2 bullet points in {lang}. Each must be a complete, grammatically sound sentence "
+                f"This is a mixed-language post containing both {commentary_lang} commentary and sacred Arabic text (Quran, Hadith, or dua).\n"
+                f"STRICT RULE: Summarize ONLY the {commentary_lang} commentary into EXACTLY {target_bullets} bullet points in {commentary_lang}.\n"
+                f"Preserve all Arabic text, Quranic verses, Hadith, and duas EXACTLY as provided in the post, word-for-word, unaltered.\n"
+                f"Do NOT summarize, translate, paraphrase, or truncate the Arabic text. Include the exact Arabic text alongside your summary bullet points."
+            )
+        elif is_short:
+            format_instruction = (
+                f"Generate EXACTLY 2 bullet points in {commentary_lang}. Each must be a complete, grammatically sound sentence "
                 "capturing the core message and key facts."
             )
         else:
-            target_bullets = 3
             format_instruction = (
-                f"Generate EXACTLY 3 concise bullet points in {lang}. Each must be a complete, grammatically sound sentence "
+                f"Generate EXACTLY 3 concise bullet points in {commentary_lang}. Each must be a complete, grammatically sound sentence "
                 "capturing the main context, key facts, and conclusion."
             )
 
@@ -253,7 +344,7 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
                     },
                     {
                         "role": "user",
-                        "content": f"Summarize this {lang} post faithfully into {'2' if is_short else '3'} bullet points in {lang}.",
+                        "content": f"Summarize this {'mixed ' if is_mixed else ''}{commentary_lang} post faithfully into {'2' if is_short else '3'} bullet points in {commentary_lang}.",
                     },
                 ],
                 temperature=0.3,
@@ -268,7 +359,12 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
                 detail="Summarization service is temporarily unavailable. Please try again shortly.",
             ) from e
 
-        final_summary = clean_summary_output(llm_result.content, safe_content, target_bullets=target_bullets)
+        final_summary = clean_summary_output(
+            llm_result.content,
+            safe_content,
+            target_bullets=target_bullets,
+            preserved_arabic_segments=arabic_sacred if is_mixed else None,
+        )
 
         result = SummarizeResponse(
             summary=final_summary,
@@ -292,7 +388,7 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             request_id,
             result.summary_length,
             result.original_length,
-            lang,
+            lang_label,
             target_bullets,
             llm_result.model_used,
             llm_result.is_fallback,

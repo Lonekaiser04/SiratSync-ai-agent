@@ -117,6 +117,79 @@ class TestSummarizationMultilingualAndRules:
                 assert "2:153" in data["summary"] or "Al-Baqarah" in data["summary"]
                 assert "الصَّبْرِ" in data["summary"] or "patience and prayer" in data["summary"]
 
+    @pytest.mark.asyncio
+    async def test_pure_arabic_post_kept_unchanged(self):
+        arabic_text = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ"
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                resp = await ac.post("/summarize", json={"post_content": arabic_text, "user_id": "arabic_user"})
+                assert resp.status_code == 200
+                data = resp.json()
+                # Must be returned unchanged with 0 LLM calls
+                assert mock_create.call_count == 0
+                assert data["summary"] == arabic_text
+
+    @pytest.mark.asyncio
+    async def test_mixed_english_arabic_post_summarizes_english_and_preserves_arabic(self):
+        mixed_post = (
+            "Renewing your intention daily is paramount in our faith. "
+            "The Messenger of Allah peace be upon him stated: "
+            "إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى "
+            "Every action that you undertake throughout your day, from studying to work and family care, "
+            "can become worship if performed sincerely for Allah alone."
+        )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• Sincere daily intention transforms mundane activities like study and work into acts of worship.\n"
+            "• The Prophet peace be upon him taught: إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى."
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=160))
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_res
+                resp = await ac.post("/summarize", json={"post_content": mixed_post, "user_id": "mixed_user"})
+                assert resp.status_code == 200
+                data = resp.json()
+                summary = data["summary"]
+                assert summary.count("•") == 2
+                assert "إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ" in summary
+
+    @pytest.mark.asyncio
+    async def test_long_post_generates_3_bullets(self):
+        long_content = (
+            "The month of Ramadan offers a transformative spiritual journey for Muslims worldwide. "
+            "Throughout these blessed thirty days, individuals observe strict fasting from dawn until sunset, "
+            "which serves to discipline desires and nurture empathy towards those experiencing poverty and hardship. "
+            "Furthermore, mosques fill each evening for communal Taraweeh prayers and daily Quran recitation circles. "
+            "Generosity reaches its peak through the distribution of Zakat and voluntary charity to support vulnerable families. "
+            "The final ten nights present Laylat al-Qadr, an occasion of unparalleled blessing that exceeds a thousand months. "
+            "Believers dedicate their late hours to sincere repentance, personal reflection, and supplication. "
+            "Cultivating these consistent spiritual habits during Ramadan establishes a foundation for lifelong piety."
+        )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• Ramadan fasting disciplines personal desires while fostering deep empathy for the less fortunate.\n"
+            "• The month promotes vibrant communal worship through nightly Taraweeh prayers and extensive charitable giving.\n"
+            "• Believers maximize devotion during the final ten nights, seeking divine forgiveness during Laylat al-Qadr."
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=220))
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
+                resp = await ac.post("/summarize", json={"post_content": long_content, "user_id": "long_user_fresh"})
+                assert resp.status_code == 200
+                data = resp.json()
+                summary = data["summary"]
+                lines = [l for l in summary.split("\n") if l.strip()]
+                assert len(lines) == 3
+                assert all(l.startswith("• ") for l in lines)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. ISLAMIC CHAT, DIRECT ANSWERS & QURAN RAG REGRESSION TESTS
