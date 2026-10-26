@@ -60,7 +60,7 @@ class Settings:
     GROQ_API_KEY: str | None = os.environ.get("GROQ_API_KEY")
     GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
     FALLBACK_GROQ_MODEL: str = os.environ.get("FALLBACK_GROQ_MODEL", "openai/gpt-oss-20b")
-    LLM_TIMEOUT_SECONDS: float = float(os.environ.get("LLM_TIMEOUT_SECONDS", "20"))
+    LLM_TIMEOUT_SECONDS: float = float(os.environ.get("LLM_TIMEOUT_SECONDS", "35"))
     LLM_MAX_RETRIES: int = _env_int("LLM_MAX_RETRIES", 2)
 
     # ── Redis ────────────────────────────────────────────────────────────

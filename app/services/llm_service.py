@@ -134,7 +134,7 @@ class LLMService:
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.5,
-        max_tokens: int = 500,
+        max_tokens: int = 1500,
         primary_model: str | None = None,
         fallback_model: str | None = None,
         timeout: float | None = None,

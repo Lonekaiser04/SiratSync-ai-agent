@@ -1,17 +1,20 @@
 """
 Post-summarization endpoint for SiratSync Community.
 
-Pipeline:
-1. Input sanitization: Strips zero-width characters, collapses emoji and punctuation spam,
-   and normalizes excessive whitespace.
-2. Very short input preservation: Returns very short posts unchanged without LLM round-trip.
-3. Language detection: Accurately identifies English, Urdu, Arabic, or Roman Urdu.
-4. Structure budgeting: Exactly 2 bullet points for short posts, exactly 3 for long posts.
-5. Cache lookup: Leverages Redis/in-memory cache across users for identical public posts.
-6. Sacred text & sentence integrity: Preserves Quran, Hadith, duas, and complete sentences.
-7. Model execution & fallback: Invokes primary model (openai/gpt-oss-120b) with transparent
-   fallback to openai/gpt-oss-20b on retryable provider errors.
-8. Output post-processing: Enforces bullet structure and terminal punctuation.
+Core Requirements:
+1. English-Only Summarization:
+   - Summarize English text ONLY in English.
+   - Preserve Urdu, Kashmiri, Arabic, and other non-English content completely unchanged.
+   - If no English content exists in the post, return the original post unchanged.
+2. Length Budgeting:
+   - Very short posts (< 35 chars or < 6 words) remain unchanged.
+   - Short posts (<= 80 words and <= 500 chars) get exactly 2 concise bullets in English.
+   - Long posts (> 80 words or > 500 chars) get exactly 3 concise bullets in English.
+3. Sacred Text Integrity:
+   - Never modify, translate, paraphrase, or truncate Quranic verses, Hadith, duas, or quoted Arabic text.
+4. Mixed-Language Structure:
+   - Summarize only the English portion into 2 or 3 bullets in English.
+   - Preserve all non-English text (Arabic verses, Hadith, duas, Urdu, Kashmiri) word-for-word, unaltered.
 """
 from __future__ import annotations
 
@@ -46,7 +49,7 @@ _PREAMBLE_PATTERN = re.compile(
     r"^(?:here is a summary(?: of the post)?\s*:?|summary(?: of the post)?\s*:|in summary\s*:|key takeaways\s*:)\s*",
     re.IGNORECASE,
 )
-_TERMINAL_PUNCTUATION = {".", "!", "?", "۔", "؟", '"', "'", "”", "’"}
+_TERMINAL_PUNCTUATION = {".", "!", "?", '"', "'", "”", "’"}
 
 _URDU_SPECIFIC_CHARS = set("ٹڈڑںےہئےپچژگ")
 _URDU_WORDS = {
@@ -58,6 +61,25 @@ _ROMAN_URDU_WORDS = {
     "wo", "woh", "kya", "bhi", "nahi", "kare", "karna", "apne", "apni", "hoga",
     "hogi", "humein", "unko", "meri", "mera", "namaz", "roza", "dua", "allah",
     "bhai", "behn", "bohat", "kuch", "shukriya", "jazakallah", "deen", "subah", "shaam",
+    "karo", "raha", "rahi", "rahe", "tha", "thi", "the", "par", "pe", "sab", "hum",
+    "bare", "baat", "karenge", "musalman", "zaroori", "zaroor", "liye", "har", "acha",
+    "achi", "kisi", "aik", "ek", "sirf", "batao", "bataiye", "shuru", "khatam", "dost",
+}
+
+_ENGLISH_COMMON_WORDS = {
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for", "not",
+    "on", "with", "he", "as", "you", "do", "at", "this", "but", "his", "by", "from",
+    "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", "all", "would",
+    "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which",
+    "go", "me", "when", "make", "can", "like", "time", "no", "just", "him", "know",
+    "take", "people", "into", "year", "your", "good", "some", "could", "them", "see",
+    "other", "than", "then", "now", "look", "only", "come", "its", "over", "think",
+    "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
+    "even", "new", "want", "because", "any", "these", "give", "day", "most", "us",
+    "life", "community", "prayer", "prophet", "patience", "guidance", "peace", "islamic",
+    "muslim", "faith", "worship", "fasting", "daily", "quran", "hadith", "reflection",
+    "transformation", "hardship", "blessing", "charity", "believers", "sincere", "action",
+    "actions", "transforms", "importance", "remember", "difficulties", "spiritual",
 }
 
 
@@ -68,7 +90,6 @@ def extract_arabic_sacred_segments(text: str) -> list[str]:
     """
     if not text:
         return []
-    # Pattern to match continuous Arabic script tokens
     pattern = re.compile(
         r"[\u0600-\u064A\u064B-\u065F\u0670-\u06D3\u06D5-\u06ED\uFD3E\uFD3F\uFDF2\uFDFD]+"
         r"(?:\s+[\u0600-\u064A\u064B-\u065F\u0670-\u06D3\u06D5-\u06ED\uFD3E\uFD3F\uFDF2\uFDFD]+)*"
@@ -87,58 +108,72 @@ def extract_arabic_sacred_segments(text: str) -> list[str]:
     return segments
 
 
-def analyze_post_language(text: str) -> tuple[str, bool, str, list[str]]:
+def extract_non_english_segments(text: str) -> list[str]:
     """
-    Analyzes post content for language composition and mixed-language structure.
-    Returns (lang_label, is_mixed, commentary_lang, arabic_sacred_segments).
+    Extracts contiguous non-English text segments (Arabic script, Urdu, Kashmiri, etc.)
+    including sacred text, verses, Hadiths, duas, or non-English sentences.
     """
-    arabic_chars = [c for c in text if "\u0600" <= c <= "\u06FF" or "\u0750" <= c <= "\u077F"]
-    arabic_sacred = extract_arabic_sacred_segments(text)
-    latin_words = re.findall(r"\b[a-zA-Z]{3,}\b", text)
-    urdu_words = [w for w in text.split() if w in _URDU_WORDS]
-    has_urdu_chars = any(c in _URDU_SPECIFIC_CHARS for c in text)
+    if not text:
+        return []
+    pattern = re.compile(
+        r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+"
+        r"(?:[\s\d:()\-.,/–—]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)*"
+    )
+    segments: list[str] = []
+    for match in pattern.finditer(text):
+        chunk = match.group(0).strip()
+        if len(chunk) >= 6:
+            segments.append(chunk)
+    return segments
 
-    # 1. Mixed English + Arabic
-    if len(latin_words) >= 4 and len(arabic_sacred) > 0:
-        words_lower = set(re.findall(r"\b[a-z]+\b", text.lower()))
-        roman_urdu_matches = words_lower.intersection(_ROMAN_URDU_WORDS)
-        if len(roman_urdu_matches) >= 3:
-            return "Mixed (Roman Urdu/Arabic)", True, "Roman Urdu", arabic_sacred
-        return "Mixed (English/Arabic)", True, "English", arabic_sacred
 
-    # 2. Mixed Urdu + Arabic
-    if (has_urdu_chars or len(urdu_words) >= 2) and len(arabic_sacred) > 0:
-        has_tashkeel = any("\u064B" <= c <= "\u065F" or c == "\u0670" for c in "".join(arabic_sacred))
-        if has_tashkeel or any(len(seg.split()) >= 3 for seg in arabic_sacred):
-            return "Mixed (Urdu/Arabic)", True, "Urdu", arabic_sacred
+def extract_english_words(text: str) -> list[str]:
+    """
+    Extracts meaningful English words, filtering out Roman Urdu indicator words.
+    """
+    latin_tokens = re.findall(r"\b[a-zA-Z]{2,}\b", text)
+    return [t for t in latin_tokens if t.lower() not in _ROMAN_URDU_WORDS]
 
-    # 3. Pure Arabic (Quran, Hadith, Duas, or Arabic posts)
-    if len(arabic_chars) >= 6 and not has_urdu_chars and len(urdu_words) == 0 and len(latin_words) < 3:
-        return "Arabic", False, "Arabic", arabic_sacred
 
-    # 4. Pure Urdu
-    if len(arabic_chars) >= 4 and (has_urdu_chars or len(urdu_words) >= 1):
-        return "Urdu", False, "Urdu", []
+def has_english_content(text: str) -> bool:
+    """
+    Determines whether the post contains meaningful English content to summarize.
+    Returns False for pure Urdu, Arabic, Kashmiri, Roman Urdu, or non-English text.
+    """
+    english_words = extract_english_words(text)
+    if len(english_words) < 4:
+        return False
 
-    # 5. Roman Urdu
-    words_lower = set(re.findall(r"\b[a-z]+\b", text.lower()))
-    roman_urdu_matches = words_lower.intersection(_ROMAN_URDU_WORDS)
-    if len(roman_urdu_matches) >= 3 or (len(words_lower) <= 15 and len(roman_urdu_matches) >= 2):
-        return "Roman Urdu", False, "Roman Urdu", []
+    # Check for presence of recognized English words
+    recognized_count = sum(1 for w in english_words if w.lower() in _ENGLISH_COMMON_WORDS)
+    if recognized_count >= 2:
+        return True
 
-    # 6. Default English
-    return "English", False, "English", []
+    # Check if ratio of distinct English-like words is high
+    return len(english_words) >= 5
 
 
 def detect_content_language(text: str) -> str:
-    """Detects if content is Urdu, Arabic, Roman Urdu, or English."""
-    lang, _, _, _ = analyze_post_language(text)
-    if "Urdu" in lang and "Roman" not in lang:
-        return "Urdu"
-    if "Arabic" in lang and "Mixed" not in lang:
-        return "Arabic"
-    if "Roman Urdu" in lang:
+    """Legacy helper for testing language classification."""
+    arabic_chars = [c for c in text if "\u0600" <= c <= "\u06FF" or "\u0750" <= c <= "\u077F"]
+    latin_words = re.findall(r"\b[a-zA-Z]{3,}\b", text)
+    has_urdu_chars = any(c in _URDU_SPECIFIC_CHARS for c in text)
+    urdu_words = [w for w in text.split() if w in _URDU_WORDS]
+
+    if has_english_content(text):
+        return "English"
+
+    words_lower = set(re.findall(r"\b[a-z]+\b", text.lower()))
+    roman_urdu_matches = words_lower.intersection(_ROMAN_URDU_WORDS)
+    if len(roman_urdu_matches) >= 3:
         return "Roman Urdu"
+
+    if (has_urdu_chars or len(urdu_words) >= 1) and len(arabic_chars) >= 4:
+        return "Urdu"
+
+    if len(arabic_chars) >= 6:
+        return "Arabic"
+
     return "English"
 
 
@@ -160,7 +195,6 @@ def preprocess_post_content(raw_content: str) -> tuple[str, bool]:
     if len(cleaned) < _MIN_CONTENT_LENGTH_FOR_SUMMARY:
         return cleaned, True
 
-    # Check if content has meaningful letters
     has_letters = any(c.isalnum() for c in cleaned)
     if not has_letters:
         return cleaned, True
@@ -169,7 +203,7 @@ def preprocess_post_content(raw_content: str) -> tuple[str, bool]:
 
 
 def _get_adaptive_max_tokens(is_short_or_length: bool | int) -> int:
-    """Provides ample token allowance so neither English nor multilingual BPE tokens truncate mid-sentence."""
+    """Provides ample token allowance for English summaries without mid-sentence truncation."""
     if isinstance(is_short_or_length, bool):
         return 450 if is_short_or_length else 750
     if is_short_or_length <= 250:
@@ -183,12 +217,11 @@ def clean_summary_output(
     raw_summary: str,
     original_content: str,
     target_bullets: int = 0,
-    preserved_arabic_segments: list[str] | None = None,
+    preserved_segments: list[str] | None = None,
 ) -> str:
     """
-    Strips LLM meta-preambles, formats clean bullet points, ensures complete sentences,
-    removes dangling truncated clauses, supports multilingual terminal punctuation,
-    and preserves sacred Arabic verses/Hadith verbatim.
+    Strips LLM meta-preambles, formats clean English bullet points, ensures complete sentences,
+    removes dangling truncated clauses, and preserves non-English & sacred segments verbatim.
     """
     summary = raw_summary.strip()
     summary = _PREAMBLE_PATTERN.sub("", summary).strip()
@@ -200,25 +233,24 @@ def clean_summary_output(
     lines = [line.strip() for line in summary.split("\n") if line.strip()]
     has_bullet_markers = any(re.match(r"^(?:[•\-\*]|\d+[\.\)])\s*", line) for line in lines)
 
-    # If single unbulleted text that was abruptly truncated mid-sentence
+    # If single unbulleted text that was cut off mid-sentence
     if not has_bullet_markers and target_bullets == 0 and len(lines) == 1:
         single = lines[0]
         if len(single) > 50 and single[-1] not in _TERMINAL_PUNCTUATION:
-            last_punct = max(
-                single.rfind("."),
-                single.rfind("!"),
-                single.rfind("?"),
-                single.rfind("۔"),
-                single.rfind("؟"),
-            )
+            last_punct = max(single.rfind("."), single.rfind("!"), single.rfind("?"))
             if last_punct > len(single) * 0.5:
                 single = single[: last_punct + 1].strip()
         if single[-1] not in _TERMINAL_PUNCTUATION:
-            single += "۔" if any("\u0600" <= c <= "\u06FF" for c in single) else "."
+            single += "."
         return single
 
     cleaned_bullets: list[str] = []
     for line in lines:
+        # If line contains preserved non-English segment, leave it as is
+        if preserved_segments and any(seg in line for seg in preserved_segments if len(seg) >= 8):
+            cleaned_bullets.append(line)
+            continue
+
         m = re.match(r"^(?:[•\-\*]|\d+[\.\)])\s*(.*)", line)
         bullet_text = m.group(1).strip() if m else line
 
@@ -227,39 +259,34 @@ def clean_summary_output(
 
         # If bullet was cut off mid-sentence
         if len(bullet_text) > 40 and bullet_text[-1] not in _TERMINAL_PUNCTUATION:
-            last_punct = max(
-                bullet_text.rfind("."),
-                bullet_text.rfind("!"),
-                bullet_text.rfind("?"),
-                bullet_text.rfind("۔"),
-                bullet_text.rfind("؟"),
-            )
+            last_punct = max(bullet_text.rfind("."), bullet_text.rfind("!"), bullet_text.rfind("?"))
             if last_punct > len(bullet_text) * 0.6:
                 bullet_text = bullet_text[: last_punct + 1].strip()
 
         if bullet_text[-1] not in _TERMINAL_PUNCTUATION:
-            if any("\u0600" <= c <= "\u06FF" for c in bullet_text):
-                bullet_text += "۔"
-            else:
-                bullet_text += "."
+            bullet_text += "۔" if any("\u0600" <= c <= "\u06FF" for c in bullet_text) else "."
 
         should_prefix_bullet = has_bullet_markers or len(lines) > 1
         cleaned_bullets.append(f"• {bullet_text}" if should_prefix_bullet else bullet_text)
 
-    if target_bullets > 0 and len(cleaned_bullets) > target_bullets:
-        cleaned_bullets = cleaned_bullets[:target_bullets]
+    # Separate bullets from preserved non-English segments for counting
+    actual_bullets = [b for b in cleaned_bullets if b.startswith("• ")]
+    other_lines = [b for b in cleaned_bullets if not b.startswith("• ")]
 
-    final_text = "\n".join(cleaned_bullets) if cleaned_bullets else summary
+    if target_bullets > 0 and len(actual_bullets) > target_bullets:
+        actual_bullets = actual_bullets[:target_bullets]
 
-    # Ensure preserved sacred Arabic segments are present in mixed-language summaries
-    if preserved_arabic_segments:
+    final_text = "\n".join(actual_bullets + other_lines) if (actual_bullets or other_lines) else summary
+
+    # Ensure preserved sacred Arabic and non-English segments are completely retained
+    if preserved_segments:
         missing_segments = [
-            seg for seg in preserved_arabic_segments
-            if len(seg) >= 12 and seg not in final_text
+            seg for seg in preserved_segments
+            if len(seg) >= 8 and seg not in final_text
         ]
         if missing_segments:
-            arabic_prefix = "\n\n".join(missing_segments)
-            final_text = f"{arabic_prefix}\n\n{final_text}"
+            non_eng_block = "\n\n".join(missing_segments)
+            final_text = f"{final_text}\n\n{non_eng_block}"
 
     return final_text
 
@@ -276,7 +303,7 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
         raw_content = request.post_content or ""
         cleaned_content, is_trivial_or_very_short = preprocess_post_content(raw_content)
 
-        # 1. Very short posts (< 35 chars): keep unchanged
+        # 1. Very short posts (< 35 chars): remain unchanged
         if is_trivial_or_very_short:
             logger.info("request_id=%s Very short or trivial content — keeping unchanged", request_id)
             return SummarizeResponse(
@@ -286,12 +313,27 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             )
 
         safe_content = sanitize_user_text(cleaned_content, max_length=settings.MAX_POST_CONTENT_LENGTH)
-        lang_label, is_mixed, commentary_lang, arabic_sacred = analyze_post_language(safe_content)
 
-        # 2. Pure Arabic, Quranic verse, Hadith, or dua posts: return unchanged
-        # Rule: "Never summarize, translate, modify, or truncate Arabic text, Quranic verses, Hadith, or duas. Return these texts unchanged."
-        if lang_label == "Arabic":
-            logger.info("request_id=%s Pure Arabic or sacred text post — keeping unchanged", request_id)
+        # 2. English-Only Rule: If no English content exists, return original post unchanged!
+        # "Summarize English text only. Preserve Urdu, Kashmiri, Arabic, and other non-English content unchanged."
+        # "If no English content exists, return the original post unchanged."
+        if not has_english_content(safe_content):
+            logger.info(
+                "request_id=%s No English content detected (pure Urdu, Arabic, Kashmiri, or non-English) — keeping unchanged",
+                request_id,
+            )
+            return SummarizeResponse(
+                summary=cleaned_content,
+                original_length=len(raw_content),
+                summary_length=len(cleaned_content),
+            )
+
+        english_words = extract_english_words(safe_content)
+        english_word_count = len(english_words)
+
+        # If English word count is very short (< 6 words), keep unchanged
+        if english_word_count < 6:
+            logger.info("request_id=%s Very short English content (< 6 words) — keeping unchanged", request_id)
             return SummarizeResponse(
                 summary=cleaned_content,
                 original_length=len(raw_content),
@@ -308,25 +350,28 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             except (json_module.JSONDecodeError, TypeError, ValueError) as e:
                 logger.warning("request_id=%s Corrupt summarize cache entry, regenerating: %s", request_id, e)
 
-        word_count = len(safe_content.split())
-        is_short = word_count <= 80 and len(safe_content) <= 500
+        # 3. Detect non-English content to preserve (Quran, Hadith, duas, Arabic text, Urdu, Kashmiri)
+        non_english_segments = extract_non_english_segments(safe_content)
+        is_mixed = len(non_english_segments) > 0
+
+        # 4. Length Budgeting: short posts get 2 concise bullets, long posts get 3
+        is_short = english_word_count <= 80 and len(safe_content) <= 500
         target_bullets = 2 if is_short else 3
 
         if is_mixed:
             format_instruction = (
-                f"This is a mixed-language post containing both {commentary_lang} commentary and sacred Arabic text (Quran, Hadith, or dua).\n"
-                f"STRICT RULE: Summarize ONLY the {commentary_lang} commentary into EXACTLY {target_bullets} bullet points in {commentary_lang}.\n"
-                f"Preserve all Arabic text, Quranic verses, Hadith, and duas EXACTLY as provided in the post, word-for-word, unaltered.\n"
-                f"Do NOT summarize, translate, paraphrase, or truncate the Arabic text. Include the exact Arabic text alongside your summary bullet points."
+                f"STRICT RULE: Summarize ONLY the English text into EXACTLY {target_bullets} concise bullet points in English.\n"
+                f"Preserve all non-English text, Arabic verses, Hadith, duas, and quotes EXACTLY as provided in the post, word-for-word, unaltered.\n"
+                f"Do NOT summarize, translate, paraphrase, or truncate the non-English or Arabic text. Include the exact unaltered text alongside your English summary bullet points."
             )
         elif is_short:
             format_instruction = (
-                f"Generate EXACTLY 2 bullet points in {commentary_lang}. Each must be a complete, grammatically sound sentence "
+                "Generate EXACTLY 2 concise bullet points in English. Each must be a complete, grammatically sound sentence "
                 "capturing the core message and key facts."
             )
         else:
             format_instruction = (
-                f"Generate EXACTLY 3 concise bullet points in {commentary_lang}. Each must be a complete, grammatically sound sentence "
+                "Generate EXACTLY 3 concise bullet points in English. Each must be a complete, grammatically sound sentence "
                 "capturing the main context, key facts, and conclusion."
             )
 
@@ -344,7 +389,10 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
                     },
                     {
                         "role": "user",
-                        "content": f"Summarize this {'mixed ' if is_mixed else ''}{commentary_lang} post faithfully into {'2' if is_short else '3'} bullet points in {commentary_lang}.",
+                        "content": (
+                            f"Summarize only the English portion into {target_bullets} concise bullet points in English. "
+                            f"{'Preserve all non-English and Arabic text verbatim and unchanged.' if is_mixed else ''}"
+                        ),
                     },
                 ],
                 temperature=0.3,
@@ -363,7 +411,7 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             llm_result.content,
             safe_content,
             target_bullets=target_bullets,
-            preserved_arabic_segments=arabic_sacred if is_mixed else None,
+            preserved_segments=non_english_segments if is_mixed else None,
         )
 
         result = SummarizeResponse(
@@ -384,11 +432,11 @@ async def summarize_post(request: SummarizeRequest, http_request: Request = None
             logger.warning("request_id=%s Failed to cache summary: %s", request_id, e)
 
         logger.info(
-            "request_id=%s Summary produced: %d chars (from %d) [lang=%s, target_bullets=%d, model=%s, fallback=%s]",
+            "request_id=%s English summary produced: %d chars (from %d) [is_mixed=%s, target_bullets=%d, model=%s, fallback=%s]",
             request_id,
             result.summary_length,
             result.original_length,
-            lang_label,
+            is_mixed,
             target_bullets,
             llm_result.model_used,
             llm_result.is_fallback,

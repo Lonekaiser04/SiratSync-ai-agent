@@ -191,7 +191,7 @@ async def chat(request: ChatRequest, http_request: Request):
             llm_messages.append({"role": "user", "content": safe_message})
 
             temperature = 0.3 if primary_intent in ("technical", "factual") else 0.6
-            max_tokens = 350 if urgency == "high" else 500
+            max_tokens = 700 if urgency == "high" else 1500
 
             try:
                 llm_result = await llm_service.generate_completion(
