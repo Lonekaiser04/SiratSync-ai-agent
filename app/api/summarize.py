@@ -6,7 +6,7 @@ import json as json_module
 import logging
 
 from fastapi import APIRouter, HTTPException
-from groq import AsyncGroq, GroqError
+from groq import AsyncGroq, GroqError, NotFoundError
 
 from app.core.config import settings
 from app.core.security import sanitize_user_text
@@ -46,17 +46,40 @@ async def summarize_post(request: SummarizeRequest):
 
         safe_content = sanitize_user_text(content, max_length=settings.MAX_POST_CONTENT_LENGTH)
 
+        effective_model = settings.GROQ_MODEL
         try:
-            llm_response = await llm.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": SUMMARIZE_PROMPT.format(content=safe_content)},
-                    {"role": "user", "content": "Summarize this post concisely"},
-                ],
-                temperature=0.3,
-                max_tokens=150,
-                timeout=settings.LLM_TIMEOUT_SECONDS,
-            )
+            try:
+                llm_response = await llm.chat.completions.create(
+                    model=effective_model,
+                    messages=[
+                        {"role": "system", "content": SUMMARIZE_PROMPT.format(content=safe_content)},
+                        {"role": "user", "content": "Summarize this post concisely"},
+                    ],
+                    temperature=0.3,
+                    max_tokens=150,
+                    timeout=settings.LLM_TIMEOUT_SECONDS,
+                )
+            except NotFoundError as nfe:
+                if effective_model != settings.FALLBACK_GROQ_MODEL:
+                    logger.warning(
+                        "Configured Groq model %s not found (404). Falling back to %s: %s",
+                        effective_model,
+                        settings.FALLBACK_GROQ_MODEL,
+                        nfe,
+                    )
+                    effective_model = settings.FALLBACK_GROQ_MODEL
+                    llm_response = await llm.chat.completions.create(
+                        model=effective_model,
+                        messages=[
+                            {"role": "system", "content": SUMMARIZE_PROMPT.format(content=safe_content)},
+                            {"role": "user", "content": "Summarize this post concisely"},
+                        ],
+                        temperature=0.3,
+                        max_tokens=150,
+                        timeout=settings.LLM_TIMEOUT_SECONDS,
+                    )
+                else:
+                    raise
         except GroqError as e:
             logger.error("Summarize LLM call failed: %s", e, exc_info=True)
             raise HTTPException(

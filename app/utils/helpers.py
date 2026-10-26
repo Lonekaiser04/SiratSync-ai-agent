@@ -17,7 +17,7 @@ import os
 import re
 from typing import Optional
 
-from groq import AsyncGroq, GroqError
+from groq import AsyncGroq, GroqError, NotFoundError
 
 from app.core.config import settings
 from app.services.rag_service import rag_service
@@ -96,13 +96,15 @@ async def _call_llm_with_rag(user_query: str, rag_data: str, user_profile: dict)
     # our own data; cap length defensively before building the prompt.
     safe_query = (user_query or "")[: settings.MAX_MESSAGE_LENGTH]
 
+    model_to_use = settings.GROQ_MODEL
     try:
-        response = await _rag_llm_client.chat.completions.create(
-            model=settings.GROQ_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are SiratSync AI, an Islamic assistant.
+        try:
+            response = await _rag_llm_client.chat.completions.create(
+                model=model_to_use,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are SiratSync AI, an Islamic assistant.
 
 You will receive Quran reference data in English only.
 Your job:
@@ -115,22 +117,65 @@ Your job:
 7. Only use the information provided. Do not add, question, or correct it
 8. End with: "📌 For accurate verse details, ask by reference (e.g., 94:5)."
 """,
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Based on this information:\n\n{english_only}\n\n"
-                        f"User asks: {safe_query}\n\nProvide a helpful English response:"
-                    ),
-                },
-            ],
-            temperature=0.3,
-            max_tokens=600,
-            timeout=settings.LLM_TIMEOUT_SECONDS,
-        )
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Based on this information:\n\n{english_only}\n\n"
+                            f"User asks: {safe_query}\n\nProvide a helpful English response:"
+                        ),
+                    },
+                ],
+                temperature=0.3,
+                max_tokens=600,
+                timeout=settings.LLM_TIMEOUT_SECONDS,
+            )
+        except NotFoundError as nfe:
+            if model_to_use != settings.FALLBACK_GROQ_MODEL:
+                logger.warning(
+                    "RAG LLM model %s not found (404). Falling back to %s: %s",
+                    model_to_use,
+                    settings.FALLBACK_GROQ_MODEL,
+                    nfe,
+                )
+                model_to_use = settings.FALLBACK_GROQ_MODEL
+                response = await _rag_llm_client.chat.completions.create(
+                    model=model_to_use,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": """You are SiratSync AI, an Islamic assistant.
+
+You will receive Quran reference data in English only.
+Your job:
+1. Answer the user's question using the provided data strictly
+2. Reference verses properly (e.g., "Surah Al-Baqarah 2:255 says...")
+3. Keep explanations clear and concise
+4. Be scholarly but warm
+5. NEVER attempt to write Arabic, Urdu, or Kashmiri text
+6. Respond ONLY in English
+7. Only use the information provided. Do not add, question, or correct it
+8. End with: "📌 For accurate verse details, ask by reference (e.g., 94:5)."
+""",
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Based on this information:\n\n{english_only}\n\n"
+                                f"User asks: {safe_query}\n\nProvide a helpful English response:"
+                            ),
+                        },
+                    ],
+                    temperature=0.3,
+                    max_tokens=600,
+                    timeout=settings.LLM_TIMEOUT_SECONDS,
+                )
+            else:
+                raise
+
         content = response.choices[0].message.content
         if not content or not content.strip():
-            logger.warning("RAG-grounded LLM call returned empty content")
+            logger.warning("RAG-grounded LLM call returned empty content, returning direct RAG")
             return _format_rag_data_direct(rag_data)
 
         english_response = content.strip()

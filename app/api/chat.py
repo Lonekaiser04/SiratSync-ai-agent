@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, Request
-from groq import AsyncGroq, GroqError
+from groq import AsyncGroq, GroqError, NotFoundError
 
 from app.core.config import settings
 from app.core.security import detect_prompt_injection, sanitize_user_text
@@ -151,6 +151,7 @@ async def chat(request: ChatRequest, http_request: Request):
         )
 
         used_llm = False
+        effective_model = settings.GROQ_MODEL
 
         if quick_reply:
             reply = quick_reply
@@ -178,25 +179,50 @@ async def chat(request: ChatRequest, http_request: Request):
             max_tokens = 350 if urgency == "high" else 500
 
             try:
-                llm_response = await llm.chat.completions.create(
-                    model=settings.GROQ_MODEL,
-                    messages=[
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": safe_message},
-                    ],
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=settings.LLM_TIMEOUT_SECONDS,
-                )
-                reply = (llm_response.choices[0].message.content or "").strip()
-                used_llm = True
+                try:
+                    llm_response = await llm.chat.completions.create(
+                        model=effective_model,
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": safe_message},
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=settings.LLM_TIMEOUT_SECONDS,
+                    )
+                except NotFoundError as nfe:
+                    if effective_model != settings.FALLBACK_GROQ_MODEL:
+                        logger.warning(
+                            "request_id=%s Configured Groq model %s not found (404). Falling back to %s: %s",
+                            request_id,
+                            effective_model,
+                            settings.FALLBACK_GROQ_MODEL,
+                            nfe,
+                        )
+                        effective_model = settings.FALLBACK_GROQ_MODEL
+                        llm_response = await llm.chat.completions.create(
+                            model=effective_model,
+                            messages=[
+                                {"role": "system", "content": prompt},
+                                {"role": "user", "content": safe_message},
+                            ],
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            timeout=settings.LLM_TIMEOUT_SECONDS,
+                        )
+                    else:
+                        raise
 
-                if not reply:
+                reply = (llm_response.choices[0].message.content or "").strip()
+                if reply:
+                    used_llm = True
+                else:
                     logger.warning("request_id=%s LLM returned empty content", request_id)
                     reply = (
                         "I wasn't able to form a complete answer to that. Could you "
                         "rephrase your question? 🤲"
                     )
+                    used_llm = False
 
             except GroqError as e:
                 logger.error("request_id=%s Groq API error: %s", request_id, e, exc_info=True)
@@ -204,6 +230,14 @@ async def chat(request: ChatRequest, http_request: Request):
                     "I'm having trouble reaching my knowledge service right now. "
                     "Please try again shortly. JazakAllah khair for your patience. 🤲"
                 )
+                used_llm = False
+            except Exception as e:
+                logger.error("request_id=%s Unexpected error during LLM generation: %s", request_id, e, exc_info=True)
+                reply = (
+                    "I'm having trouble reaching my knowledge service right now. "
+                    "Please try again shortly. JazakAllah khair for your patience. 🤲"
+                )
+                used_llm = False
 
             if len(reply) > 2000 and urgency != "high":
                 cutoff = reply.rfind(".", 0, 2000)
@@ -211,7 +245,19 @@ async def chat(request: ChatRequest, http_request: Request):
                     cutoff = 2000
                 reply = reply[: cutoff + 1] + "\n\n_📲 Open the app for the full response._"
 
-            logger.info("request_id=%s LLM reply generated (%d chars)", request_id, len(reply))
+            if used_llm:
+                logger.info(
+                    "request_id=%s LLM reply generated successfully (%d chars) using model %s",
+                    request_id,
+                    len(reply),
+                    effective_model,
+                )
+            else:
+                logger.warning(
+                    "request_id=%s Fallback response returned (%d chars) due to provider failure or empty generation",
+                    request_id,
+                    len(reply),
+                )
 
         from app.services.action_service import (
             get_motivational_quote,
@@ -248,6 +294,8 @@ async def chat(request: ChatRequest, http_request: Request):
             is_quran_topic=is_quran_topic,
             used_rag=used_rag,
             was_quick_reply=bool(quick_reply),
+            used_llm=used_llm,
+            model_name=effective_model if not quick_reply else settings.GROQ_MODEL,
         )
 
         response_data = {
@@ -262,16 +310,17 @@ async def chat(request: ChatRequest, http_request: Request):
             "sources": sources,
         }
 
-        try:
-            await cache.set(
-                request.message,
-                effective_user_id,
-                json_module.dumps(response_data),
-                ttl_minutes=settings.RESPONSE_CACHE_TTL_MINUTES,
-            )
-        except (TypeError, ValueError) as e:
-            # Non-JSON-serializable content shouldn't break the response.
-            logger.warning("request_id=%s Failed to cache response: %s", request_id, e)
+        if used_llm or quick_reply:
+            try:
+                await cache.set(
+                    request.message,
+                    effective_user_id,
+                    json_module.dumps(response_data),
+                    ttl_minutes=settings.RESPONSE_CACHE_TTL_MINUTES,
+                )
+            except (TypeError, ValueError) as e:
+                # Non-JSON-serializable content shouldn't break the response.
+                logger.warning("request_id=%s Failed to cache response: %s", request_id, e)
 
         return ChatResponse(**response_data)
 
@@ -358,13 +407,23 @@ def _build_sources(
     is_quran_topic: bool,
     used_rag: bool,
     was_quick_reply: bool,
+    used_llm: bool = True,
+    model_name: str | None = None,
 ) -> list[dict]:
     """
     Build accurate source attribution based on:
     - What type of query was made
     - What is actually present in the reply text
+    - Whether LLM was actually used or a fallback/quick-reply was returned
     """
     sources: list[dict] = []
+
+    ai_source = {
+        "type": "ai_generated",
+        "label": "Sirat Assistant",
+        "detail": f"Groq {model_name or settings.GROQ_MODEL}",
+        "icon": "ai",
+    }
 
     if is_verse_query:
         if _has_arabic_text(reply):
@@ -388,9 +447,10 @@ def _build_sources(
             sources.append(_SRC_URDU)
         if _has_kashmiri_text(reply):
             sources.append(_SRC_KASHMIRI)
-        sources.append(_SRC_AI)
-        if not sources or sources == [_SRC_AI]:
-            sources = [_SRC_KB, _SRC_AI]
+        if used_llm:
+            sources.append(ai_source)
+        if not sources or sources == [ai_source]:
+            sources = [_SRC_KB, ai_source] if used_llm else [_SRC_KB]
         return sources
 
     # Quick reply (app info, features, direct answers)
@@ -398,12 +458,17 @@ def _build_sources(
         sources.append(_SRC_KB)
         return sources
 
-    # Knowledge base answered without LLM
+    # Knowledge base answered without LLM (or with LLM)
     if used_rag and not is_quran_topic:
         sources.append(_SRC_KB)
-        sources.append(_SRC_AI)
+        if used_llm:
+            sources.append(ai_source)
         return sources
 
-    # Pure LLM response
-    sources.append(_SRC_AI)
+    # Pure LLM response vs fallback
+    if used_llm:
+        sources.append(ai_source)
+    else:
+        sources.append(_SRC_KB)
     return sources
+

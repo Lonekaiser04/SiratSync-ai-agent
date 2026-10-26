@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter, Query
-from groq import AsyncGroq, GroqError
+from groq import AsyncGroq, GroqError, NotFoundError
 
 from app.core.config import settings
 from app.services.memory_service import memory
@@ -52,13 +52,32 @@ async def _check_llm_connectivity(deep: bool = False) -> str:
 
     try:
         if _llm is not None:
-            await _llm.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
-                timeout=5,
-            )
-            _last_llm_check_result = "connected"
+            model_to_test = settings.GROQ_MODEL
+            try:
+                await _llm.chat.completions.create(
+                    model=model_to_test,
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=1,
+                    timeout=5,
+                )
+                _last_llm_check_result = "connected"
+            except NotFoundError as nfe:
+                if model_to_test != settings.FALLBACK_GROQ_MODEL:
+                    logger.warning(
+                        "Health check: Model %s not found (404). Testing fallback %s: %s",
+                        model_to_test,
+                        settings.FALLBACK_GROQ_MODEL,
+                        nfe,
+                    )
+                    await _llm.chat.completions.create(
+                        model=settings.FALLBACK_GROQ_MODEL,
+                        messages=[{"role": "user", "content": "ping"}],
+                        max_tokens=1,
+                        timeout=5,
+                    )
+                    _last_llm_check_result = "connected_fallback"
+                else:
+                    raise
         else:
             _last_llm_check_result = "not_configured"
     except GroqError as e:
@@ -80,7 +99,7 @@ async def health(deep: bool = Query(default=False, description="Run deep externa
     is_redis = await memory.is_redis_available()
     session_counts = await memory.get_session_counts()
 
-    overall_status = "healthy" if llm_status in ("configured", "connected", "not_configured") else "degraded"
+    overall_status = "healthy" if llm_status in ("configured", "connected", "connected_fallback", "not_configured") else "degraded"
 
     return {
         "status": overall_status,
@@ -96,6 +115,7 @@ async def health(deep: bool = Query(default=False, description="Run deep externa
             },
             "llm": llm_status,
             "model": settings.GROQ_MODEL,
+            "fallback_model": settings.FALLBACK_GROQ_MODEL,
         },
         "uptime": "online",
     }

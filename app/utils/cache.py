@@ -110,6 +110,13 @@ class LocalResponseCache:
         with self._lock:
             self._cache.pop(key, None)
 
+    async def clear(self) -> None:
+        self.clear_sync()
+
+    def clear_sync(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
 
 class RedisResponseCache:
     """Redis-backed async cache, shared across all instances."""
@@ -174,6 +181,24 @@ class RedisResponseCache:
                 logger.warning("Redis cache DELETE failed: %s", e)
 
         await self._local_fallback.delete(message, user_id, scope)
+
+    async def clear(self) -> None:
+        redis_client = self._get_redis()
+        if redis_client is not None:
+            try:
+                for prefix in (settings.RESPONSE_CACHE_PREFIX, settings.SUMMARY_CACHE_PREFIX):
+                    keys = await redis_client.keys(f"{prefix}*")
+                    if keys:
+                        await redis_client.delete(*keys)
+            except Exception as e:
+                logger.warning("Redis cache clear failed: %s", e)
+        self.clear_sync()
+
+    def clear_sync(self) -> None:
+        self._local_fallback.clear_sync()
+
+
+
 
 
 # Global async cache instance
