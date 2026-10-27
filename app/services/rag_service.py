@@ -1286,8 +1286,8 @@ class RAGKnowledge:
                     f"the longest verse in the Quran. It provides detailed guidance on financial transactions, "
                     f"contracts, witnesses, and the importance of documenting debts. This verse reflects Islam's "
                     f"comprehensive approach to social justice and economic ethics.\n\n"
-                    f"🔤 **Arabic Text:**\n{longest_verse['arabic']}\n\n"
-                    f"**English Translation:**\n_{longest_verse['english']}_\n\n"
+                    f"**Arabic:**\n{longest_verse['arabic']}\n\n"
+                    f"**English:**\n_{longest_verse['english']}_\n\n"
                     f"📊 **Statistics:**\n"
                     f"• Approximate character count (without diacritics): **{arabic_length:,}**\n"
                     f"• Appears in: **Juz 3**\n\n"
@@ -1336,8 +1336,8 @@ class RAGKnowledge:
             for i, v in enumerate(top_shortest[:5], 1):
                 result += f"**{i}.** {v['surah_name']} ({v['surah_translation']}) "
                 result += f"— {v['surah_id']}:{v['verse_id']}\n"
-                result += f"🔤 {v['arabic']}\n"
-                result += f"{v['english']}_\n"
+                result += f"{v['arabic']}\n"
+                result += f"**English:** _{v['english']}_\n"
                 result += f"📊 Characters: {v['length']}\n\n"
             
             result += "📌 **Scholarly Perspectives:**\n\n"
@@ -1452,7 +1452,7 @@ class RAGKnowledge:
         resp = (
             f"📖 **{verse['surah_name']} ({verse['surah_translation']}) "
             f"— {surah_id}:{verse_id}**\n\n"
-            f"🔤 **Arabic:**\n{verse['arabic']}\n\n"
+            f"**Arabic:**\n{verse['arabic']}\n\n"
             f"**English:**\n_{verse['english']}_"
         )
 
@@ -1466,11 +1466,11 @@ class RAGKnowledge:
             ks = verse["kashmiri"]
             if len(ks) > 400:
                 resp += (
-                    f"\n\n🏔️ **Kashmiri (Tafsir):**\n{ks[:600]}...\n"
+                    f"\n\n**Kashmiri (Tafsir):**\n{ks[:600]}...\n"
                     f"_📲 Open the full verse in the app for complete Kashmiri Tafsir._"
                 )
             else:
-                resp += f"\n\n🏔️ **Kashmiri:**\n{ks}"
+                resp += f"\n\n**Kashmiri:**\n{ks}"
 
         similar = self.get_similar_ayahs(surah_id, verse_id, top_n=2, min_score=50)
         if similar:
@@ -1497,8 +1497,8 @@ class RAGKnowledge:
                 f"**{sv['surah_name']} {sv['surah_id']}:{sv['verse_id']}**"
                 f" — _similarity {sv.get('similarity_score')}%, "
                 f"coverage {sv.get('similarity_coverage')}%_\n"
-                f"🔤 {sv['arabic']}\n"
-                f"🇬🇧 _{sv['english'][:250]}_\n"
+                f"{sv['arabic']}\n"
+                f"**English:** _{sv['english'][:250]}_\n"
             )
         return "\n".join(lines)
     
@@ -1544,7 +1544,7 @@ class RAGKnowledge:
                     parts.append(f"**Urdu:**\n{v['urdu'][:200]}")
                 if v.get("kashmiri"):
                     ks = v["kashmiri"]
-                    parts.append(f"🏔️ **Kashmiri:**\n{ks[:200]}{'...' if len(ks) > 200 else ''}")
+                    parts.append(f"**Kashmiri:**\n{ks[:200]}{'...' if len(ks) > 200 else ''}")
 
         if hadiths:
             parts.append("\n📚 **Verified Hadith:**")

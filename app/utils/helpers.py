@@ -62,7 +62,7 @@ def _format_rag_data_direct(rag_data: str) -> str:
             lines_out.append(f"{stripped.replace('URDU:', '').strip()}")
         elif stripped.startswith("KASHMIRI TAFSIR:") or stripped.startswith("KASHMIRI:"):
             ks = re.sub(r"^KASHMIRI( TAFSIR)?:", "", stripped).strip()
-            lines_out.append(f"🏔️ **Kashmiri:** {ks}")
+            lines_out.append(f"**Kashmiri:** {ks}")
         elif stripped.startswith("TRANSLITERATION:"):
             lines_out.append(f"🔊 _{stripped.replace('TRANSLITERATION:', '').strip()}_")
         elif stripped.startswith("SUMMARY:"):
