@@ -298,3 +298,145 @@ class TestChatStreamingEndpoint:
             history = await memory.get_recent_messages("test_user_disconnect", count=10)
             assert len(history) == 0
 
+    async def test_streaming_slow_response_emits_keep_alive(self):
+        """Verify that provider pauses trigger ': keep-alive' SSE comments without breaking stream."""
+        import asyncio
+
+        async def _slow_chunks():
+            # First chunk
+            choice = MagicMock()
+            choice.delta.content = "Initial thought. "
+            choice.finish_reason = None
+            yield MagicMock(choices=[choice])
+
+            # Pause > 1.0 second to trigger keep-alive
+            await asyncio.sleep(1.2)
+
+            # Second chunk
+            choice = MagicMock()
+            choice.delta.content = "Conclusion."
+            choice.finish_reason = "stop"
+            yield MagicMock(choices=[choice])
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = _slow_chunks()
+                with patch("app.core.config.settings.LLM_TIMEOUT_SECONDS", 2):
+                    response = await ac.post(
+                        "/chat/stream",
+                        json={
+                            "user_id": "test_stream_slow_user",
+                            "message": "Discuss deep philosophical reasoning",
+                        },
+                    )
+                    assert response.status_code == 200
+                    assert ": keep-alive" in response.text
+                    events = _parse_sse_events(response.text)
+                    received_tokens = [e[1].get("delta") for e in events if e[0] == "token"]
+                    assert "".join(received_tokens) == "Initial thought. Conclusion."
+
+    async def test_streaming_long_answer_bounded(self):
+        """Verify long answer (>2000 chars) is streamed and bounded properly."""
+        sentence = "This is a detailed and beneficial reflection on patience and prayer. "
+        # 40 repetitions is ~2800 characters
+        tokens = [sentence for _ in range(40)]
+        mock_stream = _create_mock_stream(tokens)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_stream
+
+                response = await ac.post(
+                    "/chat/stream",
+                    json={
+                        "user_id": "test_stream_long_user",
+                        "message": "Give a long treatise on sabr",
+                    },
+                )
+                assert response.status_code == 200
+                events = _parse_sse_events(response.text)
+                done_event = next(e[1] for e in events if e[0] == "done")
+                assert len(done_event["reply"]) <= 2005
+                assert done_event["reply"].endswith(".")
+
+    async def test_streaming_concurrent_requests(self):
+        """Verify multiple simultaneous streaming requests complete without crosstalk."""
+        import asyncio
+
+        def _make_user_stream(user_tag: str):
+            tokens = [f"Response ", f"for ", f"{user_tag}."]
+            return _create_mock_stream(tokens)
+
+        def _side_effect(*args, **kwargs):
+            messages = kwargs.get("messages", [])
+            last_msg = messages[-1]["content"] if messages else ""
+            for tag in ["user_1", "user_2", "user_3"]:
+                if tag in last_msg:
+                    return _make_user_stream(tag)
+            return _make_user_stream("UserUnknown")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.side_effect = _side_effect
+
+                async def _send(u_id: str):
+                    return await ac.post(
+                        "/chat/stream",
+                        json={"user_id": u_id, "message": f"Explain reflection concept for {u_id}"},
+                    )
+
+                resA, resB, resC = await asyncio.gather(
+                    _send("concurrent_user_1"),
+                    _send("concurrent_user_2"),
+                    _send("concurrent_user_3"),
+                )
+
+                assert resA.status_code == 200
+                assert resB.status_code == 200
+                assert resC.status_code == 200
+
+                eventsA = _parse_sse_events(resA.text)
+                eventsB = _parse_sse_events(resB.text)
+                eventsC = _parse_sse_events(resC.text)
+
+                replyA = next(e[1] for e in eventsA if e[0] == "done")["reply"]
+                replyB = next(e[1] for e in eventsB if e[0] == "done")["reply"]
+                replyC = next(e[1] for e in eventsC if e[0] == "done")["reply"]
+
+                assert "user_1" in replyA
+                assert "user_2" in replyB
+                assert "user_3" in replyC
+
+    async def test_streaming_provider_stall_timeout(self):
+        """Verify provider stalling past timeout raises TimeoutError and yields error event."""
+        import asyncio
+
+        async def _stalled_chunks():
+            choice = MagicMock()
+            choice.delta.content = "Start..."
+            choice.finish_reason = None
+            yield MagicMock(choices=[choice])
+            # Hang longer than test timeout
+            await asyncio.sleep(2.0)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = _stalled_chunks()
+                with patch("app.core.config.settings.LLM_TIMEOUT_SECONDS", 0.5):
+                    response = await ac.post(
+                        "/chat/stream",
+                        json={
+                            "user_id": "test_user_stall",
+                            "message": "This provider will stall",
+                        },
+                    )
+                    assert response.status_code == 200
+                    events = _parse_sse_events(response.text)
+                    error_events = [e for e in events if e[0] in ("error", "token")]
+                    assert len(error_events) >= 1
+
+

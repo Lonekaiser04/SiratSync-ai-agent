@@ -7,6 +7,7 @@ response assembly + caching.
 """
 from __future__ import annotations
 
+import asyncio
 import json as json_module
 import logging
 import re
@@ -140,7 +141,9 @@ async def chat(request: ChatRequest, http_request: Request):
             request_id, primary_intent, sub_intent, sentiment,
         )
 
-        knowledge = rag_service.retrieve(request.message, top_k=5, user_id=effective_user_id)
+        knowledge = await asyncio.to_thread(
+            rag_service.retrieve, request.message, 5, effective_user_id
+        )
         if not knowledge or knowledge.strip() == "(No specific knowledge retrieved)":
             knowledge = ""
 
@@ -166,7 +169,9 @@ async def chat(request: ChatRequest, http_request: Request):
             logger.info("request_id=%s Quick response used", request_id)
 
         elif _is_verse_or_surah_query(message_lower):
-            reply = rag_service.retrieve(request.message, top_k=5, user_id=request.user_id)
+            reply = await asyncio.to_thread(
+                rag_service.retrieve, request.message, 5, request.user_id
+            )
             logger.info("request_id=%s Verse/Surah RAG response used — LLM bypassed", request_id)
 
         else:
@@ -472,8 +477,13 @@ def _build_sources(
 
 
 def _format_sse(event: str, data: dict | list | str) -> str:
-    payload = json_module.dumps(data) if isinstance(data, (dict, list)) else data
-    return f"event: {event}\ndata: {payload}\n\n"
+    if isinstance(data, (dict, list)):
+        payload = json_module.dumps(data)
+    else:
+        payload = json_module.dumps({"delta": data}) if event == "token" else str(data)
+    lines = payload.split("\n")
+    data_lines = "\n".join(f"data: {l}" for l in lines)
+    return f"event: {event}\n{data_lines}\n\n"
 
 
 async def _chat_stream_generator(request: ChatRequest, http_request: Request):
@@ -558,9 +568,11 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
             "urgency": urgency,
         })
 
-        # 5. RAG retrieval
+        # 5. Non-blocking RAG retrieval
         yield _format_sse("status", {"status": "searching", "stage": "knowledge_retrieval"})
-        knowledge = rag_service.retrieve(request.message, top_k=5, user_id=effective_user_id)
+        knowledge = await asyncio.to_thread(
+            rag_service.retrieve, request.message, 5, effective_user_id
+        )
         if not knowledge or knowledge.strip() == "(No specific knowledge retrieved)":
             knowledge = ""
 
@@ -596,7 +608,9 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
                 yield _format_sse("token", {"delta": word + space})
 
         elif _is_verse_or_surah_query(message_lower):
-            reply = rag_service.retrieve(request.message, top_k=5, user_id=request.user_id)
+            reply = await asyncio.to_thread(
+                rag_service.retrieve, request.message, 5, request.user_id
+            )
             logger.info("request_id=%s Verse/Surah RAG response used for stream", request_id)
             yield _format_sse("status", {"status": "generating", "stage": "verse_retrieval"})
             lines = reply.split("\n")
@@ -632,18 +646,61 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
             yield _format_sse("status", {"status": "thinking", "stage": "llm_generation"})
 
             accumulated: list[str] = []
+            queue: asyncio.Queue[LLMStreamChunk | Exception | None] = asyncio.Queue()
+
+            async def _stream_producer():
+                try:
+                    async for chunk in llm_service.generate_completion_stream(
+                        messages=llm_messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        client=llm,
+                        request_id=request_id,
+                    ):
+                        await queue.put(chunk)
+                except Exception as exc:
+                    await queue.put(exc)
+                finally:
+                    await queue.put(None)
+
+            producer_task = asyncio.create_task(_stream_producer())
+            last_token_time = asyncio.get_event_loop().time()
+            stall_timeout = float(settings.LLM_TIMEOUT_SECONDS)
+            heartbeat_interval = min(5.0, max(0.2, stall_timeout / 2.0))
+
             try:
-                async for chunk in llm_service.generate_completion_stream(
-                    messages=llm_messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    client=llm,
-                    request_id=request_id,
-                ):
+                while True:
                     if await http_request.is_disconnected():
                         logger.info("request_id=%s Client disconnected during LLM stream", request_id)
+                        producer_task.cancel()
                         return
 
+                    try:
+                        item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
+                    except asyncio.TimeoutError:
+                        if await http_request.is_disconnected():
+                            logger.info("request_id=%s Client disconnected during stream heartbeat wait", request_id)
+                            producer_task.cancel()
+                            return
+                        if (asyncio.get_event_loop().time() - last_token_time) >= stall_timeout:
+                            logger.error(
+                                "request_id=%s LLM streaming stalled: no tokens for %ds",
+                                request_id,
+                                stall_timeout,
+                            )
+                            producer_task.cancel()
+                            raise TimeoutError(f"LLM streaming provider timed out after {stall_timeout}s")
+                        # Emit keep-alive comment line to prevent mobile proxy/gateway timeouts
+                        yield ": keep-alive\n\n"
+                        continue
+
+                    if item is None:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+
+                    chunk = item
+                    last_token_time = asyncio.get_event_loop().time()
                     accumulated.append(chunk.delta)
                     effective_model = chunk.model_used
                     yield _format_sse("token", {"delta": chunk.delta})
@@ -676,6 +733,9 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
                 )
                 yield _format_sse("token", {"delta": reply})
                 used_llm = False
+            finally:
+                if not producer_task.done():
+                    producer_task.cancel()
 
             if len(reply) > 2000 and urgency != "high":
                 cutoff = reply.rfind(".", 0, 2000)
