@@ -283,9 +283,10 @@ async def chat(request: ChatRequest, http_request: Request):
         elif user_profile.get("consistency") == "medium":
             motivational_quote = get_motivational_quote("medium")
 
-        # Update memory after successful response generation
-        await memory.add_message(effective_user_id, "user", request.message)
-        await memory.add_message(effective_user_id, "assistant", reply)
+        # Update memory only after successful response generation (prevent error pollution)
+        if used_llm or quick_reply or _is_verse_or_surah_query(message_lower):
+            await memory.add_message(effective_user_id, "user", request.message)
+            await memory.add_message(effective_user_id, "assistant", reply)
 
         is_verse_query = _is_verse_or_surah_query(message_lower)
         is_quran_topic = rag_service._is_quran_topic_query(message_lower)
@@ -733,20 +734,30 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
 
             except GroqError as e:
                 logger.error("request_id=%s Groq API error during stream: %s", request_id, e, exc_info=True)
-                reply = (
+                fallback_msg = (
                     "I'm having trouble reaching my knowledge service right now. "
                     "Please try again shortly. JazakAllah khair for your patience. 🤲"
                 )
-                yield _format_sse("token", {"delta": reply})
-                used_llm = False
+                yield _format_sse("error", {
+                    "reply": fallback_msg,
+                    "error": str(e),
+                    "intent": primary_intent,
+                    "timestamp": datetime.now().isoformat(),
+                })
+                return
             except Exception as e:
                 logger.error("request_id=%s Unexpected error during LLM streaming: %s", request_id, e, exc_info=True)
-                reply = (
+                fallback_msg = (
                     "I'm having trouble reaching my knowledge service right now. "
                     "Please try again shortly. JazakAllah khair for your patience. 🤲"
                 )
-                yield _format_sse("token", {"delta": reply})
-                used_llm = False
+                yield _format_sse("error", {
+                    "reply": fallback_msg,
+                    "error": str(e),
+                    "intent": primary_intent,
+                    "timestamp": datetime.now().isoformat(),
+                })
+                return
             finally:
                 if not producer_task.done():
                     producer_task.cancel()
@@ -782,8 +793,8 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
         elif user_profile.get("consistency") == "medium":
             motivational_quote = get_motivational_quote("medium")
 
-        # 8. Save complete response to memory only after successful generation
-        if not await http_request.is_disconnected():
+        # 8. Save complete response to memory only after verified successful generation
+        if (used_llm or quick_reply or _is_verse_or_surah_query(message_lower)) and not await http_request.is_disconnected():
             await memory.add_message(effective_user_id, "user", request.message)
             await memory.add_message(effective_user_id, "assistant", reply)
 

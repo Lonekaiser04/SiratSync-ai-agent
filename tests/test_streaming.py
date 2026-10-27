@@ -224,11 +224,16 @@ class TestChatStreamingEndpoint:
                 assert response.status_code == 200
                 events = _parse_sse_events(response.text)
                 
-                # Verify fallback notice was emitted
-                done_or_error = [e for e in events if e[0] in ("done", "error")]
-                assert len(done_or_error) >= 1
-                payload = done_or_error[0][1]
+                # Verify error event was emitted (not done) and reply contains trouble notice
+                error_events = [e for e in events if e[0] == "error"]
+                assert len(error_events) >= 1
+                assert "done" not in [e[0] for e in events]
+                payload = error_events[0][1]
                 assert "trouble" in payload.get("reply", "").lower() or "trouble" in payload.get("error", "").lower()
+
+                # Verify memory was NOT polluted with error text
+                history = await memory.get_recent_messages("test_user_stream_error", count=10)
+                assert len(history) == 0
 
     async def test_streaming_cache_hit_returns_immediately(self):
         """Verify cached responses are streamed immediately from Redis/local cache."""
