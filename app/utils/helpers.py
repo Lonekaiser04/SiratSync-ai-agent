@@ -82,7 +82,6 @@ def _format_rag_data_direct(rag_data: str) -> str:
         else:
             lines_out.append(stripped)
 
-    lines_out.append("\n🤲 _Open the full surah in the app for complete tafsir._")
     return "\n".join(lines_out)
 
 async def _call_llm_with_rag(user_query: str, rag_data: str, user_profile: dict) -> str:

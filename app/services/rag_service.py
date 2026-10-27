@@ -1465,10 +1465,7 @@ class RAGKnowledge:
         if verse.get("kashmiri"):
             ks = verse["kashmiri"]
             if len(ks) > 400:
-                resp += (
-                    f"\n\n**Kashmiri (Tafsir):**\n{ks[:600]}...\n"
-                    f"_📲 Open the full verse in the app for complete Kashmiri Tafsir._"
-                )
+                resp += f"\n\n**Kashmiri (Tafsir):**\n{ks[:600]}..."
             else:
                 resp += f"\n\n**Kashmiri:**\n{ks}"
 
@@ -1552,7 +1549,6 @@ class RAGKnowledge:
                 narrator_str = f" (Narrated by {h['narrator']})" if h.get("narrator") else ""
                 parts.append(f"• \"{h['text']}\"\n  — **{h['source']}**{narrator_str}")
 
-        parts.append("\n🤲 _For complete tafsir, open the full surah in the SiratSync app._")
         return "\n".join(parts)
     
     def get_topic_verses_formatted(self, query: str) -> tuple[str, str]:

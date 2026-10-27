@@ -18,12 +18,13 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_CHAT_TTL_SECONDS = 60 * 60 * 24 * 60      # 60 days
+_CHAT_TTL_SECONDS = 60 * 60 * 24 * 7       # 7 days (bounded, fresh memory)
 _STATS_TTL_SECONDS = 60 * 60 * 24 * 7      # 7 days
-_ACTIVE_TTL_SECONDS = 60 * 60 * 24 * 60    # 60 days
-_MAX_MESSAGES_STORED = 50
+_ACTIVE_TTL_SECONDS = 60 * 60 * 24 * 7     # 7 days
+_MAX_MESSAGES_STORED = 30
 _REDIS_HEALTH_CACHE_SECONDS = 30
 
+_ANONYMOUS_IDS = frozenset({"anonymous", "guest", "none", "unknown", "null", "undefined"})
 _POSITIVE_WORDS = frozenset(
     {"mashallah", "alhamdulillah", "achieved", "completed", "streak", "proud", "consistent"}
 )
@@ -158,17 +159,36 @@ class MemoryManager:
             logger.warning("add_message called with invalid args: user_id=%r role=%r", user_id, role)
             return
 
+        clean_user_id = user_id.strip()
+        if not clean_user_id:
+            return
+
         message_data = {
             "role": role,
             "content": content,
             "timestamp": datetime.now().isoformat(),
         }
 
+        # Prevent sharing memory across anonymous/unauthenticated users
+        if clean_user_id.lower() in _ANONYMOUS_IDS:
+            self._fallback_add(clean_user_id, message_data)
+            return
+
         if await self.is_redis_available():
             try:
-                chat_key = f"sirat:chat:{user_id}"
-                active_key = f"sirat:active:{user_id}"
-                stats_key = f"sirat:stats:{user_id}"
+                chat_key = f"sirat:chat:{clean_user_id}"
+                active_key = f"sirat:active:{clean_user_id}"
+                stats_key = f"sirat:stats:{clean_user_id}"
+
+                # Deduplicate consecutive identical messages
+                try:
+                    last_raw = await self.redis.lindex(chat_key, -1)
+                    if last_raw:
+                        last_msg = json.loads(last_raw)
+                        if last_msg.get("role") == role and (last_msg.get("content") or "").strip() == content.strip():
+                            return
+                except Exception:
+                    pass
 
                 async with self.redis.pipeline(transaction=False) as pipe:
                     pipe.rpush(chat_key, json.dumps(message_data))
@@ -191,20 +211,36 @@ class MemoryManager:
             except Exception as e:
                 logger.warning("Redis pipeline error in add_message: %s — using fallback", e)
 
-        self._fallback_add(user_id, message_data)
+        self._fallback_add(clean_user_id, message_data)
 
     def _fallback_add(self, user_id: str, message_data: dict) -> None:
         with self._fallback_lock:
             bucket = self.fallback_sessions.setdefault(user_id, [])
+            # Deduplicate consecutive identical messages
+            if (
+                bucket
+                and bucket[-1].get("role") == message_data.get("role")
+                and (bucket[-1].get("content") or "").strip() == (message_data.get("content") or "").strip()
+            ):
+                return
             bucket.append(message_data)
             if len(bucket) > _MAX_MESSAGES_STORED:
                 self.fallback_sessions[user_id] = bucket[-_MAX_MESSAGES_STORED:]
 
     # ── Reads ────────────────────────────────────────────────────────────
     async def _get_recent_messages(self, user_id: str, count: int) -> list[dict]:
+        clean_user_id = (user_id or "").strip()
+        if not clean_user_id:
+            return []
+
+        # Never leak memories across generic anonymous users
+        if clean_user_id.lower() in _ANONYMOUS_IDS:
+            with self._fallback_lock:
+                return list(self.fallback_sessions.get(clean_user_id, [])[-count:])
+
         if await self.is_redis_available():
             try:
-                key = f"sirat:chat:{user_id}"
+                key = f"sirat:chat:{clean_user_id}"
                 raw_messages = await self.redis.lrange(key, -count, -1)
                 messages = []
                 for raw in raw_messages:
@@ -213,13 +249,13 @@ class MemoryManager:
                     try:
                         messages.append(json.loads(raw))
                     except (json.JSONDecodeError, TypeError):
-                        logger.warning("Skipping corrupt message entry for user %s", user_id)
+                        logger.warning("Skipping corrupt message entry for user %s", clean_user_id)
                 return messages
             except Exception as e:
                 logger.warning("Redis error reading messages: %s — using fallback", e)
 
         with self._fallback_lock:
-            return list(self.fallback_sessions.get(user_id, [])[-count:])
+            return list(self.fallback_sessions.get(clean_user_id, [])[-count:])
 
     async def get_recent_messages(self, user_id: str, count: int = 6) -> list[dict]:
         """Return the most recent messages as structured dicts: [{'role': ..., 'content': ...}, ...]."""
@@ -254,10 +290,11 @@ class MemoryManager:
 
     async def get_user_profile(self, user_id: str) -> dict[str, Any]:
         stats = {"total_messages": 0, "achievement_count": 0, "struggle_count": 0}
+        clean_user_id = (user_id or "").strip()
 
-        if await self.is_redis_available():
+        if clean_user_id and clean_user_id.lower() not in _ANONYMOUS_IDS and await self.is_redis_available():
             try:
-                key = f"sirat:stats:{user_id}"
+                key = f"sirat:stats:{clean_user_id}"
                 async with self.redis.pipeline(transaction=False) as pipe:
                     pipe.hget(key, "total_messages")
                     pipe.hget(key, "achievement_count")
@@ -271,16 +308,17 @@ class MemoryManager:
                 if results[2] is not None:
                     stats["struggle_count"] = int(results[2])
             except Exception as e:
-                logger.warning("Failed to read user profile stats for %s: %s", user_id, e)
+                logger.warning("Failed to read user profile stats for %s: %s", clean_user_id, e)
 
         consistency = "unknown"
-        if stats["total_messages"] > 5:
-            if stats["achievement_count"] > stats["struggle_count"] * 1.5:
-                consistency = "high"
-            elif stats["achievement_count"] > stats["struggle_count"] * 0.5:
-                consistency = "medium"
-            else:
+        if stats["total_messages"] >= 3:
+            # Only classify as struggling if user has actually logged explicit struggles
+            if stats["struggle_count"] > 0 and stats["struggle_count"] >= stats["achievement_count"]:
                 consistency = "struggling"
+            elif stats["achievement_count"] > 0 and stats["achievement_count"] > stats["struggle_count"]:
+                consistency = "high"
+            elif stats["total_messages"] >= 8:
+                consistency = "medium"
 
         return {
             "consistency": consistency,
@@ -374,7 +412,9 @@ class MemoryManager:
             return "🤲 Start with just ONE prayer on time today. Allah loves small consistent deeds."
         if consistency == "high":
             return "🌟 MashaAllah! Consider adding morning adhkar to your routine."
-        return "📌 Set a small daily goal in the Habit Tracker today."
+        if consistency == "medium":
+            return "📌 Set a small daily goal in the Habit Tracker today."
+        return ""
 
     async def get_session_counts(self) -> dict[str, int]:
         """Lightweight session counts without scanning the entire keyspace."""

@@ -80,14 +80,12 @@ async def chat(request: ChatRequest, http_request: Request):
                 # and fall through to a fresh generation.
                 logger.warning("request_id=%s Corrupt cache entry, regenerating: %s", request_id, e)
 
-        # Capture prior conversational context and previous turns BEFORE registering current message
+        # Capture prior conversational context and previous turns BEFORE generating current response
         last_question = await memory.get_last_question(effective_user_id, exclude_current=request.message)
         last_bot_message = await memory.get_last_bot_message(effective_user_id)
         recent_messages = await memory.get_recent_messages(effective_user_id, count=6)
         server_context = await memory.get_context(effective_user_id, max_messages=6)
         conversation_context = request.context if request.context else server_context
-
-        await memory.add_message(effective_user_id, "user", request.message)
 
         if detect_prompt_injection(request.message) or (
             request.context and detect_prompt_injection(request.context)
@@ -237,9 +235,10 @@ async def chat(request: ChatRequest, http_request: Request):
 
             if len(reply) > 2000 and urgency != "high":
                 cutoff = reply.rfind(".", 0, 2000)
-                if cutoff == -1:
-                    cutoff = 2000
-                reply = reply[: cutoff + 1] + "\n\n_📲 Open the app for the full response._"
+                if cutoff != -1:
+                    reply = reply[: cutoff + 1].strip()
+                else:
+                    reply = reply[:2000].strip()
 
             if used_llm:
                 logger.info(
@@ -271,13 +270,15 @@ async def chat(request: ChatRequest, http_request: Request):
         suggestions = get_quick_reply_suggestions(primary_intent, sub_intent)
 
         motivational_quote = None
-        if primary_intent == "struggling" or user_profile.get("consistency") == "struggling":
+        if primary_intent == "struggling" or (user_profile.get("consistency") == "struggling" and sentiment == "negative"):
             motivational_quote = get_motivational_quote("struggling")
         elif primary_intent == "consistent" or user_profile.get("consistency") == "high":
             motivational_quote = get_motivational_quote("high")
         elif user_profile.get("consistency") == "medium":
             motivational_quote = get_motivational_quote("medium")
 
+        # Update memory after successful response generation
+        await memory.add_message(effective_user_id, "user", request.message)
         await memory.add_message(effective_user_id, "assistant", reply)
 
         is_verse_query = _is_verse_or_surah_query(message_lower)

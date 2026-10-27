@@ -295,7 +295,7 @@ def _format_rag_data_direct(rag_data: str) -> str:
             ks = re.sub(r"^KASHMIRI( TAFSIR)?:", "", stripped).strip()
             lines_out.append(f"**Kashmiri:** {ks}")
         elif stripped.startswith("TRANSLITERATION:"):
-            lines_out.append(f"🔊 _{stripped.replace('TRANSLITERATION:', '').strip()}_")
+            lines_out.append(f"_{stripped.replace('TRANSLITERATION:', '').strip()}_")
         elif stripped.startswith("SUMMARY:"):
             lines_out.append(f"📝 {stripped.replace('SUMMARY:', '').strip()}")
         elif stripped.startswith("MAIN TOPICS:"):
@@ -313,7 +313,6 @@ def _format_rag_data_direct(rag_data: str) -> str:
         else:
             lines_out.append(stripped)
 
-    lines_out.append("\n🤲 _Open the full surah in the app for complete tafsir._")
     return "\n".join(lines_out)
 
 
