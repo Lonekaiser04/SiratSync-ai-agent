@@ -20,6 +20,10 @@ _PING_TIMEOUT_SECONDS = 5
 def keep_render_alive() -> None:
     """Ping the health endpoint periodically to prevent spin-down."""
     url = settings.RENDER_URL
+    # Ensure we always hit the lightweight liveness probe, even if
+    # RENDER_URL was set to just the base domain (e.g. from .env).
+    if url and "/health" not in url:
+        url = url.rstrip("/") + "/health/live"
 
     def ping() -> None:
         while True:

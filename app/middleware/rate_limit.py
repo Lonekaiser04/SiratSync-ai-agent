@@ -80,24 +80,52 @@ def _get_client_key(request: Request) -> str:
     return f"ip:{client_ip}"
 
 
+_RATE_LIMIT_LUA = """
+local key     = KEYS[1]
+local limit   = tonumber(ARGV[1])
+local now     = tonumber(ARGV[2])
+local window  = tonumber(ARGV[3])
+local member  = ARGV[4]
+
+-- Remove expired entries
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+
+-- Check current count BEFORE adding
+local current = redis.call('ZCARD', key)
+if current >= limit then
+    return 0
+end
+
+-- Under limit: add entry and set expiry
+redis.call('ZADD', key, now, member)
+redis.call('EXPIRE', key, window + 5)
+return 1
+"""
+
+
 async def _redis_sliding_window_allowed(redis_client, key: str, limit: int) -> bool | None:
-    """Non-blocking async sliding window using redis.asyncio."""
+    """Atomic async sliding-window rate limiter using a Lua script.
+
+    The Lua script runs atomically on the Redis server, eliminating the
+    TOCTOU race that existed in the previous pipeline-based approach
+    (which added the entry before checking the count).
+    """
     try:
         now = time.time()
-        cutoff = now - _WINDOW_SECONDS
         redis_key = f"ratelimit:{key}"
+        # Use timestamp as member to guarantee uniqueness across requests
+        member = f"{now}:{id(key)}"
 
-        async with redis_client.pipeline(transaction=True) as pipe:
-            pipe.zremrangebyscore(redis_key, 0, cutoff)
-            pipe.zcard(redis_key)
-            pipe.zadd(redis_key, {str(now): now})
-            pipe.expire(redis_key, _WINDOW_SECONDS + 5)
-            _, current_count, _, _ = await pipe.execute()
-
-        if current_count >= limit:
-            await redis_client.zrem(redis_key, str(now))
-            return False
-        return True
+        result = await redis_client.eval(
+            _RATE_LIMIT_LUA,
+            1,           # number of KEYS
+            redis_key,   # KEYS[1]
+            limit,       # ARGV[1]
+            now,         # ARGV[2]
+            _WINDOW_SECONDS,  # ARGV[3]
+            member,      # ARGV[4]
+        )
+        return bool(result)
     except Exception as e:
         logger.warning("Redis rate limiter unavailable (%s) — using local fallback", e)
         return None

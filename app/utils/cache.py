@@ -45,10 +45,12 @@ def _cache_key(message: str, user_id: str, scope: str = "chat") -> str:
         content_hash = hashlib.sha256(message.strip().encode("utf-8")).hexdigest()
         return f"{settings.SUMMARY_CACHE_PREFIX}{content_hash}"
 
-    # Chat queries
+    # Chat queries: include user_id because the cached response payload
+    # contains user-specific actions, motivational quotes, and consistency
+    # data.  The _is_personalized guard still skips caching for first-person
+    # messages, but even "factual" replies embed per-user action payloads.
     normalized = _normalize_message(message)
-    # Non-personalized factual queries are shared cross-user
-    digest = hashlib.sha256(f"chat:{normalized}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"chat:{user_id}:{normalized}".encode("utf-8")).hexdigest()
     return f"{settings.RESPONSE_CACHE_PREFIX}chat:{digest}"
 
 

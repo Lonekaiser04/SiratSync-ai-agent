@@ -222,8 +222,12 @@ class TestRedisOutageResilience:
 
     @pytest.mark.asyncio
     async def test_response_cache_works_without_redis(self):
-        """When Redis is not configured, response cache transparently uses local cache."""
+        """When Redis is not configured, response cache transparently uses local cache with user isolation."""
         local_cache = LocalResponseCache()
         await local_cache.set("What is Ramadan?", "user_1", "Ramadan is the ninth month of the Islamic calendar", scope="chat")
-        cached = await local_cache.get("What is Ramadan?", "user_2", scope="chat")
-        assert cached == "Ramadan is the ninth month of the Islamic calendar"
+        cached_user1 = await local_cache.get("What is Ramadan?", "user_1", scope="chat")
+        assert cached_user1 == "Ramadan is the ninth month of the Islamic calendar"
+        # User 2 must not see user 1's chat cache (H-4 isolation fix)
+        cached_user2 = await local_cache.get("What is Ramadan?", "user_2", scope="chat")
+        assert cached_user2 is None
+

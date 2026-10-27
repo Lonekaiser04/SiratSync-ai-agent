@@ -4,8 +4,11 @@ import hashlib
 import httpx
 import logging
 import asyncio
+import time
+import uuid
 from collections import OrderedDict
 from datetime import datetime
+from types import SimpleNamespace
 from fastapi import APIRouter, Request, Response, BackgroundTasks
 from pydantic import ValidationError
 
@@ -35,7 +38,7 @@ _DEDUP_MAX_SIZE   = 5000  # hard cap to prevent unbounded growth
 
 def _is_duplicate(msg_id: str) -> bool:
     """Returns True if this message_id was already processed recently."""
-    now     = asyncio.get_event_loop().time()
+    now     = time.monotonic()
     cutoff  = now - _DEDUP_TTL
 
     # Evict expired entries (oldest first — OrderedDict preserves insertion order)
@@ -206,7 +209,18 @@ async def receive_whatsapp_message(request: Request, background_tasks: Backgroun
             await send_whatsapp_message(from_number, UNSUPPORTED_MESSAGE)
             return {"status": "validation_error"}
 
-        chat_response = await chat(chat_req, request)
+        # Build a clean request-like object for chat() instead of reusing
+        # the webhook HTTP Request, which has:
+        #   1. Its body already consumed (await request.body())
+        #   2. Authentication state (authenticated_user_id) belonging to
+        #      the webhook caller, not the WhatsApp user
+        chat_http_state = SimpleNamespace(
+            request_id=uuid.uuid4().hex[:16],
+            authenticated_user_id=None,    # let chat() use chat_req.user_id
+        )
+        chat_http_request = SimpleNamespace(state=chat_http_state)
+
+        chat_response = await chat(chat_req, chat_http_request)
         reply_text    = _format_reply(chat_response)
 
         await send_whatsapp_message(from_number, reply_text)

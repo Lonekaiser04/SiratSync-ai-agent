@@ -57,7 +57,7 @@ def _format_rag_data_direct(rag_data: str) -> str:
         elif stripped.startswith("ARABIC:"):
             lines_out.append(f" {stripped.replace('ARABIC:', '').strip()}")
         elif stripped.startswith("ENGLISH:"):
-            lines_out.append(f"{stripped.replace('ENGLISH:', '').strip()}_")
+            lines_out.append(f"_{stripped.replace('ENGLISH:', '').strip()}_")
         elif stripped.startswith("URDU:"):
             lines_out.append(f"{stripped.replace('URDU:', '').strip()}")
         elif stripped.startswith("KASHMIRI TAFSIR:") or stripped.startswith("KASHMIRI:"):
