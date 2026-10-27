@@ -23,7 +23,7 @@ from app.models.request_models import ChatRequest
 from app.models.response_models import ActionsPayload, ChatResponse
 from app.prompts.system_prompt import SYSTEM_PROMPT
 from app.services.intent_service import intent_detector
-from app.services.llm_service import llm_service
+from app.services.llm_service import LLMStreamChunk, llm_service
 from app.services.memory_service import memory
 from app.services.rag_service import rag_service
 from app.utils.cache import cache
@@ -493,6 +493,10 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
     try:
         logger.info("request_id=%s Streaming chat request from user %s", request_id, effective_user_id)
 
+        # Emit connection acknowledgement immediately so the client's idle
+        # timeout resets BEFORE any slow backend work (cache, memory, RAG).
+        yield _format_sse("status", {"status": "connected", "stage": "init"})
+
         # 1. Cache check
         cached_response = await cache.get(request.message, effective_user_id)
         if cached_response:
@@ -506,11 +510,21 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
             except (json_module.JSONDecodeError, TypeError, ValueError) as e:
                 logger.warning("request_id=%s Corrupt cache entry during stream, regenerating: %s", request_id, e)
 
-        # 2. Context & memory extraction
-        last_question = await memory.get_last_question(effective_user_id, exclude_current=request.message)
-        last_bot_message = await memory.get_last_bot_message(effective_user_id)
-        recent_messages = await memory.get_recent_messages(effective_user_id, count=6)
-        server_context = await memory.get_context(effective_user_id, max_messages=6)
+        # 2. Context & memory extraction (non-fatal: degrade gracefully on Redis failure)
+        try:
+            last_question = await memory.get_last_question(effective_user_id, exclude_current=request.message)
+            last_bot_message = await memory.get_last_bot_message(effective_user_id)
+            recent_messages = await memory.get_recent_messages(effective_user_id, count=6)
+            server_context = await memory.get_context(effective_user_id, max_messages=6)
+        except Exception as mem_err:
+            logger.warning(
+                "request_id=%s Memory retrieval failed, continuing with empty context: %s",
+                request_id, mem_err,
+            )
+            last_question = None
+            last_bot_message = None
+            recent_messages = []
+            server_context = ""
         conversation_context = request.context if request.context else server_context
 
         # 3. Security & sanitization

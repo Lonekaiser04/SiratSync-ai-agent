@@ -257,7 +257,7 @@ class TestChatStreamingEndpoint:
             assert response.status_code == 200
             events = _parse_sse_events(response.text)
 
-            status_event = next(e[1] for e in events if e[0] == "status")
+            status_event = next(e[1] for e in events if e[0] == "status" and e[1].get("status") == "cached")
             assert status_event["status"] == "cached"
 
             token_events = [e[1]["delta"] for e in events if e[0] == "token"]
@@ -439,4 +439,86 @@ class TestChatStreamingEndpoint:
                     error_events = [e for e in events if e[0] in ("error", "token")]
                     assert len(error_events) >= 1
 
+    async def test_streaming_connected_event_emitted_first(self):
+        """The very first SSE event must be a 'status'/'connected' to prevent client timeout."""
+        tokens = ["Peace ", "be ", "upon ", "you."]
+        mock_stream = _create_mock_stream(tokens)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_stream
+
+                response = await ac.post(
+                    "/chat/stream",
+                    json={
+                        "user_id": "test_stream_user",
+                        "message": "Why is gratitude important?",
+                    },
+                )
+                assert response.status_code == 200
+                events = _parse_sse_events(response.text)
+                assert len(events) >= 1, "Stream should emit at least one event"
+
+                # The first event must be the immediate connected acknowledgement
+                first_event_type, first_payload = events[0]
+                assert first_event_type == "status", (
+                    f"First event must be 'status', got '{first_event_type}'"
+                )
+                assert first_payload.get("status") == "connected", (
+                    f"First status must be 'connected', got {first_payload}"
+                )
+
+    async def test_streaming_memory_failure_degrades_gracefully(self):
+        """When memory/Redis is unavailable, streaming should still produce a valid response."""
+        tokens = ["Sabr ", "is ", "a ", "virtue."]
+        mock_stream = _create_mock_stream(tokens)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.chat.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch.object(memory, "get_last_question", side_effect=ConnectionError("Redis down")), \
+                 patch.object(memory, "get_last_bot_message", side_effect=ConnectionError("Redis down")), \
+                 patch.object(memory, "get_recent_messages", side_effect=ConnectionError("Redis down")), \
+                 patch.object(memory, "get_context", side_effect=ConnectionError("Redis down")):
+                mock_create.return_value = mock_stream
+
+                response = await ac.post(
+                    "/chat/stream",
+                    json={
+                        "user_id": "test_stream_mem_fail",
+                        "message": "Tell me about patience in Islam",
+                    },
+                )
+                assert response.status_code == 200
+                events = _parse_sse_events(response.text)
+                event_types = [e[0] for e in events]
+
+                # Stream should still complete successfully despite memory failure
+                assert "token" in event_types, "Should still emit tokens"
+                assert "done" in event_types, "Should still emit done event"
+
+                received_tokens = [e[1].get("delta") for e in events if e[0] == "token"]
+                assert "Sabr is a virtue." in "".join(received_tokens)
+
+    async def test_sse_keep_alive_comments_parsed_correctly(self):
+        """Verify raw SSE text with keep-alive comments is parsed without errors."""
+        raw = (
+            "event: status\n"
+            "data: {\"status\": \"connected\", \"stage\": \"init\"}\n\n"
+            ": keep-alive\n\n"
+            "event: token\n"
+            "data: {\"delta\": \"Hello\"}\n\n"
+            ": keep-alive\n\n"
+            "event: done\n"
+            "data: {\"reply\": \"Hello\", \"intent\": \"general\"}\n\n"
+        )
+        events = _parse_sse_events(raw)
+        event_types = [e[0] for e in events]
+
+        assert "status" in event_types
+        assert "token" in event_types
+        assert "done" in event_types
+        # Keep-alive comments must not appear as events
+        assert all(e[0] != "keep-alive" for e in events)
 
