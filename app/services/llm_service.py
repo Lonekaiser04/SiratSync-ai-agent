@@ -14,7 +14,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, AsyncIterator
 
 from groq import (
     APIConnectionError,
@@ -48,6 +48,16 @@ class LLMResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+
+@dataclass
+class LLMStreamChunk:
+    """Standardized streaming chunk emitted during token generation."""
+
+    delta: str
+    model_used: str
+    is_fallback: bool
+    finish_reason: str | None = None
 
 
 def is_retryable_provider_error(exc: Exception) -> bool:
@@ -231,6 +241,107 @@ class LLMService:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
+            )
+
+    async def generate_completion_stream(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float = 0.5,
+        max_tokens: int = 1500,
+        primary_model: str | None = None,
+        fallback_model: str | None = None,
+        timeout: float | None = None,
+        client: AsyncGroq | None = None,
+        request_id: str = "internal",
+    ) -> AsyncIterator[LLMStreamChunk]:
+        """
+        Executes a streaming chat completion yielding LLMStreamChunk tokens.
+        If the primary model fails on connection or before yielding tokens with a retryable error,
+        it automatically falls back to the configured fallback model.
+        Fails fast on 4xx client errors without attempting fallback.
+        """
+        effective_client = client or self.client
+        primary = primary_model or settings.GROQ_MODEL
+        fallback = fallback_model or settings.FALLBACK_GROQ_MODEL
+        call_timeout = timeout or settings.LLM_TIMEOUT_SECONDS
+
+        tokens_yielded = 0
+        try:
+            stream = await effective_client.chat.completions.create(
+                model=primary,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=call_timeout,
+                stream=True,
+            )
+            async for chunk in stream:
+                choices = getattr(chunk, "choices", None)
+                choice = choices[0] if choices else None
+                delta = getattr(getattr(choice, "delta", None), "content", None) or ""
+                finish_reason = getattr(choice, "finish_reason", None)
+                if delta:
+                    tokens_yielded += 1
+                    yield LLMStreamChunk(
+                        delta=delta,
+                        model_used=primary,
+                        is_fallback=False,
+                        finish_reason=finish_reason,
+                    )
+            logger.info(
+                "request_id=%s LLM streaming completed (%d chunks) using model %s",
+                request_id,
+                tokens_yielded,
+                primary,
+            )
+            return
+
+        except Exception as exc:
+            if tokens_yielded > 0 or not is_retryable_provider_error(exc) or primary == fallback:
+                logger.error(
+                    "request_id=%s LLM streaming error with model %s (tokens_yielded=%d): %s",
+                    request_id,
+                    primary,
+                    tokens_yielded,
+                    exc,
+                )
+                raise
+
+            logger.warning(
+                "request_id=%s Primary model %s failed before stream tokens (%s: %s). Falling back to %s",
+                request_id,
+                primary,
+                type(exc).__name__,
+                exc,
+                fallback,
+            )
+
+            fallback_stream = await effective_client.chat.completions.create(
+                model=fallback,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=call_timeout,
+                stream=True,
+            )
+            async for chunk in fallback_stream:
+                choices = getattr(chunk, "choices", None)
+                choice = choices[0] if choices else None
+                delta = getattr(getattr(choice, "delta", None), "content", None) or ""
+                finish_reason = getattr(choice, "finish_reason", None)
+                if delta:
+                    tokens_yielded += 1
+                    yield LLMStreamChunk(
+                        delta=delta,
+                        model_used=fallback,
+                        is_fallback=True,
+                        finish_reason=finish_reason,
+                    )
+            logger.info(
+                "request_id=%s LLM streaming completed (%d chunks) using fallback model %s",
+                request_id,
+                tokens_yielded,
+                fallback,
             )
 
 
