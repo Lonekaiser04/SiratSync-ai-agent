@@ -195,7 +195,7 @@ async def chat(request: ChatRequest, http_request: Request):
             llm_messages.append({"role": "user", "content": safe_message})
 
             temperature = 0.3 if primary_intent in ("technical", "factual") else 0.6
-            max_tokens = 700 if urgency == "high" else 1500
+            max_tokens = 1200 if urgency == "high" else 4096
 
             try:
                 llm_result = await llm_service.generate_completion(
@@ -240,9 +240,13 @@ async def chat(request: ChatRequest, http_request: Request):
                 used_llm = False
 
             if len(reply) > 2000 and urgency != "high":
-                cutoff = reply.rfind(".", 0, 2000)
-                if cutoff != -1:
-                    reply = reply[: cutoff + 1].strip()
+                best_cutoff = -1
+                for end_char in (".", "\u06d4", "\u061f", "!", "\n"):
+                    pos = reply.rfind(end_char, 0, 2000)
+                    if pos > best_cutoff:
+                        best_cutoff = pos
+                if best_cutoff != -1:
+                    reply = reply[: best_cutoff + 1].strip()
                 else:
                     reply = reply[:2000].strip()
 
@@ -656,7 +660,7 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
             llm_messages.append({"role": "user", "content": safe_message})
 
             temperature = 0.3 if primary_intent in ("technical", "factual") else 0.6
-            max_tokens = 700 if urgency == "high" else 1500
+            max_tokens = 1200 if urgency == "high" else 4096
 
             yield _format_sse("status", {"status": "thinking", "stage": "llm_generation"})
 
@@ -763,9 +767,13 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
                     producer_task.cancel()
 
             if len(reply) > 2000 and urgency != "high":
-                cutoff = reply.rfind(".", 0, 2000)
-                if cutoff != -1:
-                    reply = reply[: cutoff + 1].strip()
+                best_cutoff = -1
+                for end_char in (".", "\u06d4", "\u061f", "!", "\n"):
+                    pos = reply.rfind(end_char, 0, 2000)
+                    if pos > best_cutoff:
+                        best_cutoff = pos
+                if best_cutoff != -1:
+                    reply = reply[: best_cutoff + 1].strip()
                 else:
                     reply = reply[:2000].strip()
 
