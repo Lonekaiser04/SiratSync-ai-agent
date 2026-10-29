@@ -81,6 +81,7 @@ class IntentDetector:
             r"\b(bukhari|muslim|tirmidhi|abudawud|nasai|ibnmajah)\b",
             r"\b(sahih|authentic|narration|tradition)\b",
             r"\b(daily hadith|hadith reminder)\b",
+            r"\b(sahaba'?s?|sahabah|sahabi|sahabis|sahabiyat|companions? of the prophet|prophet'?s companions?|ashab)\b",
         ],
         "community": [
             r"\b(community|social|feed|post|share)\b",
@@ -263,6 +264,8 @@ class IntentDetector:
             return "general_salah"
 
         if primary_intent == "quran":
+            if any(w in message for w in ["sahaba", "sahabi", "companion", "zayd"]):
+                return "quran_sahaba"
             if "read" in message or "recite" in message:
                 return "reading_quran"
             if "translation" in message or "meaning" in message:
@@ -287,7 +290,10 @@ class IntentDetector:
             return "general_dua"
 
         if primary_intent == "hadith":
+            if any(w in message for w in ["sahaba", "sahabi", "companion", "ashab"]):
+                return "sahaba_inquiry"
             if "daily" in message:
+                return "daily_hadith"
                 return "daily_hadith"
             if "bukhari" in message:
                 return "bukhari_hadith"

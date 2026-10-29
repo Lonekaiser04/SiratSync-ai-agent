@@ -101,7 +101,24 @@ async def chat(request: ChatRequest, http_request: Request):
                 request_id, effective_user_id,
             )
 
-        safe_message = sanitize_user_text(request.message, max_length=settings.MAX_MESSAGE_LENGTH)
+        is_continuation = "[CONTINUE_FROM]:" in request.message
+        effective_message = request.message
+        if is_continuation:
+            parts = request.message.split("[CONTINUE_FROM]:", 1)
+            clean_question = parts[0].replace("[CONTINUE_REQUEST]", "").strip()
+            prev_partial = parts[1].strip()
+            effective_message = clean_question
+            safe_message = (
+                f"The user asked: '{clean_question}'.\n"
+                f"Your response was cut off mid-way after:\n"
+                f"\"\"\"{prev_partial}\"\"\"\n\n"
+                f"INSTRUCTION: Continue the explanation seamlessly from the exact cutoff point. "
+                f"DO NOT repeat any of the text already written, and do not include greetings or apologies. "
+                f"Start directly with the continuation."
+            )
+        else:
+            safe_message = sanitize_user_text(request.message, max_length=settings.MAX_MESSAGE_LENGTH)
+
         safe_context = (
             sanitize_user_text(conversation_context, max_length=settings.MAX_CONTEXT_LENGTH)
             if conversation_context
@@ -119,13 +136,13 @@ async def chat(request: ChatRequest, http_request: Request):
                 context_lines.pop()
             safe_context = "\n".join(context_lines) if context_lines else None
 
-        intent_result = intent_detector.detect(request.message)
+        intent_result = intent_detector.detect(effective_message)
         primary_intent = intent_result.primary_intent
         sub_intent = intent_result.sub_intent
         sentiment = intent_result.sentiment
         urgency = intent_result.urgency
 
-        message_lower = request.message.lower().strip()
+        message_lower = effective_message.lower().strip()
 
         if message_lower in _CONFIRM_WORDS or message_lower in {"tell me more", "learn more", "more details", "what else"}:
             lq = (last_question or "").lower()
@@ -545,7 +562,24 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
                 request_id, effective_user_id,
             )
 
-        safe_message = sanitize_user_text(request.message, max_length=settings.MAX_MESSAGE_LENGTH)
+        is_continuation = "[CONTINUE_FROM]:" in request.message
+        effective_message = request.message
+        if is_continuation:
+            parts = request.message.split("[CONTINUE_FROM]:", 1)
+            clean_question = parts[0].replace("[CONTINUE_REQUEST]", "").strip()
+            prev_partial = parts[1].strip()
+            effective_message = clean_question
+            safe_message = (
+                f"The user asked: '{clean_question}'.\n"
+                f"Your response was cut off mid-way after:\n"
+                f"\"\"\"{prev_partial}\"\"\"\n\n"
+                f"INSTRUCTION: Continue the explanation seamlessly from the exact cutoff point. "
+                f"DO NOT repeat any of the text already written, and do not include greetings or apologies. "
+                f"Start directly with the continuation."
+            )
+        else:
+            safe_message = sanitize_user_text(request.message, max_length=settings.MAX_MESSAGE_LENGTH)
+
         safe_context = (
             sanitize_user_text(conversation_context, max_length=settings.MAX_CONTEXT_LENGTH)
             if conversation_context
@@ -563,13 +597,13 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
             safe_context = "\n".join(context_lines) if context_lines else None
 
         # 4. Intent detection
-        intent_result = intent_detector.detect(request.message)
+        intent_result = intent_detector.detect(effective_message)
         primary_intent = intent_result.primary_intent
         sub_intent = intent_result.sub_intent
         sentiment = intent_result.sentiment
         urgency = intent_result.urgency
 
-        message_lower = request.message.lower().strip()
+        message_lower = effective_message.lower().strip()
 
         if message_lower in _CONFIRM_WORDS or message_lower in {"tell me more", "learn more", "more details", "what else"}:
             lq = (last_question or "").lower()
@@ -592,10 +626,12 @@ async def _chat_stream_generator(request: ChatRequest, http_request: Request):
         })
 
         # 5. Non-blocking RAG retrieval
+        yield ": keep-alive\n\n"
         yield _format_sse("status", {"status": "searching", "stage": "knowledge_retrieval"})
         knowledge = await asyncio.to_thread(
             rag_service.retrieve, request.message, 5, effective_user_id
         )
+        yield ": keep-alive\n\n"
         if not knowledge or knowledge.strip() == "(No specific knowledge retrieved)":
             knowledge = ""
 
@@ -881,7 +917,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
         _chat_stream_generator(request, http_request),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },

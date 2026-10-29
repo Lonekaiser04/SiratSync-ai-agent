@@ -18,9 +18,16 @@ _STOP_WORDS: set[str] = {
     "my", "your", "all", "any", "not", "no", "but", "had", "has",
     "have", "will", "would", "could", "should", "may", "might",
     "step", "please", "give", "ruling", "get", "many",
+    "mentioned", "mention", "named",
 }
 
 _TRANSLIT: dict[str, str] = {
+    "sahaba":      "companions companion prophet companions",
+    "sahabah":     "companions companion prophet companions",
+    "sahabi":      "companion prophet companion",
+    "sahabis":     "companions companion",
+    "sahabiyat":   "female companions",
+    "ashab":       "companions",
     "sabr":        "patience",
     "shukr":       "gratitude thankfulness",
     "tawakkul":    "trust reliance",
@@ -129,13 +136,20 @@ logger = logging.getLogger(__name__)
 # ── Helper Functions ─────────────────────────────────────────────────────────
 def _expand_query(query_lower: str) -> str:
     expanded = query_lower
+    # Normalize possessives / trailing apostrophe-s (e.g. sahaba's -> sahaba)
+    norm = re.sub(r"['’]s\b", "", query_lower)
     for term, expansion in _TRANSLIT.items():
-        if term in query_lower:
+        if term in query_lower or re.search(rf"\b{re.escape(term)}\b", norm):
             expanded = f"{expanded} {expansion}"
     return expanded
 
 def _meaningful_words(text: str) -> set[str]:
-    return {w for w in text.split() if w not in _STOP_WORDS and len(w) > 2}
+    words = set()
+    for raw_w in text.split():
+        clean_w = re.sub(r"['’]s$", "", raw_w.strip(".,?!:;\"'’()[]{}").lower())
+        if clean_w not in _STOP_WORDS and len(clean_w) > 2:
+            words.add(clean_w)
+    return words
 
 # ── RAGKnowledge Class ──────────────────────────────────────────────────────
 class RAGKnowledge:
@@ -768,6 +782,16 @@ class RAGKnowledge:
             "death":              [(3, 185), (4, 78), (62, 8)],
             "judgment day":       [(82, 1), (99, 1), (2, 281)],
             "qiyamah":            [(82, 1), (99, 1), (2, 281)],
+            # ── Companions of the Prophet (Sahaba) ─────────────────────────
+            "sahaba":                     [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100), (59, 8), (59, 9), (59, 10)],
+            "sahabah":                    [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100), (59, 8), (59, 9), (59, 10)],
+            "sahabi":                     [(33, 37), (9, 40)],
+            "sahabis":                    [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100)],
+            "companions of the prophet":  [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100), (59, 8), (59, 9), (59, 10)],
+            "prophet's companions":       [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100), (59, 8), (59, 9), (59, 10)],
+            "companions":                 [(33, 37), (9, 40), (48, 18), (48, 29), (9, 100), (59, 8), (59, 9), (59, 10)],
+            "zayd":                       [(33, 37)],
+            "zayd ibn harithah":          [(33, 37)],
         }
 
         KNOWN_HADITH_MAPPINGS: dict[str, list[dict]] = {
@@ -891,12 +915,75 @@ class RAGKnowledge:
                     "narrator": "Abdullah ibn Mas'ud",
                 },
             ],
+            "sahaba": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+                {
+                    "text": "The best of people are my generation, then those who follow them, then those who follow them.",
+                    "source": "Sahih al-Bukhari 2652, Sahih Muslim 2533",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "sahabah": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+                {
+                    "text": "The best of people are my generation, then those who follow them, then those who follow them.",
+                    "source": "Sahih al-Bukhari 2652, Sahih Muslim 2533",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "sahabi": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+            ],
+            "companions": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+                {
+                    "text": "The best of people are my generation, then those who follow them, then those who follow them.",
+                    "source": "Sahih al-Bukhari 2652, Sahih Muslim 2533",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "companions of the prophet": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+                {
+                    "text": "The best of people are my generation, then those who follow them, then those who follow them.",
+                    "source": "Sahih al-Bukhari 2652, Sahih Muslim 2533",
+                    "narrator": "Abdullah ibn Mas'ud",
+                },
+            ],
+            "prophet's companions": [
+                {
+                    "text": "Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.",
+                    "source": "Sahih al-Bukhari 3673, Sahih Muslim 2540",
+                    "narrator": "Abu Sa'id al-Khudri",
+                },
+            ],
         }
         
+        norm_ql = re.sub(r"['’]s\b", "", ql)
         best_key_match = None
         best_key_len   = 0
         for key in KNOWN_VERSE_MAPPINGS:
-            if key in ql and len(key) > best_key_len:
+            if (key in ql or key in norm_ql or key in expanded) and len(key) > best_key_len:
                 best_key_len   = len(key)
                 best_key_match = key
 
@@ -989,10 +1076,19 @@ class RAGKnowledge:
                     if kw in expanded:
                         vs += 10
                 
+                META_TOPIC_IGNORE = {
+                    "quran", "in quran", "ayat", "verse", "surah", "chapter",
+                    "how many", "are mentioned", "is mentioned", "mentioned",
+                }
                 for phrase in phrases:
+                    if phrase in META_TOPIC_IGNORE:
+                        continue
                     for t in v.get("topics", []):
                         tn = (t.get("name") or "").lower()
-                        if phrase in tn or tn in phrase:
+                        if tn in META_TOPIC_IGNORE:
+                            continue
+                        if (len(phrase) >= 3 and re.search(rf"\b{re.escape(phrase)}\b", tn)) or \
+                           (len(tn) >= 3 and re.search(rf"\b{re.escape(tn)}\b", phrase)):
                             vs += 100
                             break
                 
@@ -1027,6 +1123,10 @@ class RAGKnowledge:
                     "brothers": ["brother", "sibling", "male", "men"],
                     "rights": ["right", "entitlement", "share", "inheritance", "portion"],
                     "inheritance": ["inherit", "estate", "heir", "bequest", "legacy"],
+                    "sahaba": ["companion", "companions", "zayd", "muhajir", "ansar"],
+                    "sahabah": ["companion", "companions", "zayd", "muhajir", "ansar"],
+                    "sahabi": ["companion", "zayd"],
+                    "companions": ["companion", "sahaba", "sahabi", "zayd", "muhajir", "ansar"],
                 }
                 
                 for word, expansions in SEMANTIC_MAP.items():
@@ -1110,6 +1210,7 @@ class RAGKnowledge:
             "mother", "father", "grandparents", "grandchildren",
             "spouse", "widow", "widower", "heir", "estate",
             "bequest", "will", "testament", "legacy",
+            "sahaba", "sahabah", "sahabi", "companions", "zayd",
         ]
         CTX = [
             "in islam", "in quran", "islamic", "allah says",
@@ -1703,10 +1804,91 @@ class RAGKnowledge:
                 "**Maryam (Mary, mother of Jesus - peace be upon her)** is the **only woman** mentioned by name in the Holy Quran. Surah 19 of the Quran is named 'Surah Maryam' in her honor."
             )
 
-        if any(p in ql for p in ["companion is mentioned by name", "companion mentioned by name", "companion named", "sahabi named", "sahabi is mentioned by name"]):
+        norm_ql = re.sub(r"['’]s\b", "", ql).strip()
+        sahaba_quran_patterns = [
+            "how many sahaba", "how many sahabi", "how many sahabas",
+            "how many companions are mentioned", "how many companions in quran",
+            "sahaba are mentioned in quran", "sahaba in quran", "sahabis in quran",
+            "sahabi in quran", "sahabas in quran", "sahaba mentioned in quran",
+            "sahabi mentioned in quran", "companion is mentioned by name",
+            "companion mentioned by name", "companion named", "sahabi named",
+            "sahabi is mentioned by name", "which sahabi is mentioned",
+            "which companion is mentioned", "which sahaba are mentioned",
+            "only sahabi in quran", "only companion in quran",
+            "only sahabi named in quran", "only companion named in quran",
+            "names of sahaba in quran", "name of sahabi in quran",
+            "who is the only sahabi mentioned", "is any sahabi mentioned",
+            "are sahaba mentioned in quran", "companions mentioned in quran",
+            "companions in quran", "companions are mentioned in quran",
+        ]
+        if any(p in ql or p in norm_ql for p in sahaba_quran_patterns):
             return (
-                "🌟 **Companion (Sahabi) Mentioned by Name in the Holy Quran:**\n\n"
-                "**Zayd ibn Harithah (may Allah be pleased with him)** is the **only companion (Sahabi)** explicitly named in the Quran, in Surah Al-Ahzab (33:37)."
+                "🌟 **Companions (Sahaba) in the Holy Quran:**\n\n"
+                "### 1. Explicitly Mentioned by Name\n"
+                "Exactly **one companion (Sahabi)** is explicitly mentioned **by name** in the entire Holy Quran:\n\n"
+                "• **Zayd ibn Harithah (رضي الله عنه - may Allah be pleased with him)**\n"
+                "He is explicitly named in **Surah Al-Ahzab (33:37)**:\n"
+                "> **فَلَمَّا قَضَىٰ زَيْدٌ مِّنْهَا وَطَرًا زَوَّجْنَاكَهَا**\n"
+                "> _\"So when Zayd had concluded his need for her, We married her to you...\"_\n\n"
+                "---\n\n"
+                "### 2. Mentioned by Direct Reference (Without Personal Name)\n"
+                "Other companions are directly referenced in specific historical events without their personal names being stated:\n\n"
+                "• **Abu Bakr as-Siddiq (رضي الله عنه)**:\n"
+                "Directly referenced as the Prophet's companion in the cave during the Hijrah in **Surah At-Tawbah (9:40)**:\n"
+                "> **ثَانِيَ اثْنَيْنِ إِذْ هُمَا فِي الْغَارِ إِذْ يَقُولُ لِصَاحِبِهِ لَا تَحْزَنْ إِنَّ اللَّهَ مَعَنَا**\n"
+                "> _\"...the second of the two, when they were in the cave and he said to his companion, 'Do not grieve; indeed Allah is with us.'\"_\n\n"
+                "---\n\n"
+                "### 3. Commended and Praised Collectively\n"
+                "The Sahaba are honored and praised as a blessed community across several verses:\n"
+                "• **The Muhajirun and the Ansar:** Honored in **Surah At-Tawbah (9:100)** and **Surah Al-Hashr (59:8–10)**.\n"
+                "• **The Pledge of the Tree (Bay'at al-Ridwan):** Commended in **Surah Al-Fath (48:18)**: _\"Certainly Allah was pleased with the believers when they pledged allegiance to you under the tree...\"_\n"
+                "• **All Companions with the Prophet:** Praised in **Surah Al-Fath (48:29)**: _\"Muhammad is the Messenger of Allah; and those with him are forceful against the disbelievers, merciful among themselves...\"_"
+            )
+
+        clean_q = re.sub(r"[^\w\s]", "", ql).strip()
+        general_sahaba_exact = {
+            "sahaba", "sahabas", "sahabah", "sahabi", "sahabis", "ashab",
+            "the sahaba", "the companions", "companions of the prophet",
+            "prophets companions", "who are sahaba", "who are the sahaba",
+            "what is sahaba", "meaning of sahaba", "tell me about sahaba",
+            "tell me about the sahaba", "about sahaba", "sahaba details",
+        }
+        if clean_q in general_sahaba_exact or norm_ql in general_sahaba_exact or (
+            any(w in clean_q.split() for w in ["sahaba", "sahabah", "sahabi", "ashab"]) and
+            any(w in clean_q.split() for w in ["who", "what", "meaning", "define", "explain", "about", "tell"])
+        ):
+            return (
+                "🌟 **The Companions of the Prophet (As-Sahaba - الصحابة رضي الله عنهم)**\n\n"
+                "### 📖 Who are the Sahaba?\n"
+                "In Islamic scholarship, a **Sahabi** (plural: **Sahaba** or **Ashab**) is defined as any person who:\n"
+                "1. **Met or accompanied** the Prophet Muhammad (peace and blessings be upon him) during his lifetime,\n"
+                "2. **Believed** in him as the Messenger of Allah, and\n"
+                "3. **Died upon Islam** as a believer.\n\n"
+                "---\n\n"
+                "### 📜 Their Status in the Holy Quran\n"
+                "Allah the Almighty praised the Sahaba throughout the Quran for their unwavering faith, sacrifice, and devotion:\n\n"
+                "• **Divine Pleasure for the Early Believers:**\n"
+                "> **وَالسَّابِقُونَ الْأَوَّلُونَ مِنَ الْمُهَاجِرِينَ وَالْأَنصَارِ وَالَّذِينَ اتَّبَعُوهُم بِإِحْسَانٍ رَّضِيَ اللَّهُ عَنْهُمْ وَرَضُوا عَنْهُ**\n"
+                "> _\"And the first forerunners among the Muhajireen and the Ansar and those who followed them with good conduct — Allah is pleased with them and they are pleased with Him...\"_ — **Surah At-Tawbah (9:100)**\n\n"
+                "• **Their Revered Character:**\n"
+                "> **مُّحَمَّدٌ رَّسُولُ اللَّهِ وَالَّذِينَ مَعَهُ أَشِدَّاءُ عَلَى الْكُفَّارِ رُحَمَاءُ بَيْنَهُمْ**\n"
+                "> _\"Muhammad is the Messenger of Allah; and those with him are forceful against the disbelievers, merciful among themselves...\"_ — **Surah Al-Fath (48:29)**\n\n"
+                "---\n\n"
+                "### 📚 Their Honor in Authentic Hadith\n"
+                "• **Reverence and Sanctity:**\n"
+                "> _\"Do not abuse my companions! For by Him in Whose Hand is my soul, if one of you were to spend the equivalent of Mount Uhud in gold, it would not reach the measure of one of them, nor half of it.\"_\n"
+                "> — **Sahih al-Bukhari 3673, Sahih Muslim 2540** (Narrated by Abu Sa'id al-Khudri)\n\n"
+                "• **The Best Generation:**\n"
+                "> _\"The best of people are my generation, then those who follow them, then those who follow them.\"_\n"
+                "> — **Sahih al-Bukhari 2652, Sahih Muslim 2533** (Narrated by Abdullah ibn Mas'ud)\n\n"
+                "---\n\n"
+                "### 🌟 Prominent Categories of Sahaba\n"
+                "1. **The Four Rightly Guided Caliphs (Al-Khulafa ar-Rashidun):** Abu Bakr as-Siddiq, Umar ibn al-Khattab, Uthman ibn Affan, and Ali ibn Abi Talib (رضي الله عنهم).\n"
+                "2. **The Ten Promised Paradise (Al-Asharah al-Mubasharun bil-Jannah).**\n"
+                "3. **The Muhajirun:** Those who emigrated from Mecca to Medina for the sake of Allah.\n"
+                "4. **The Ansar:** The Muslims of Medina who welcomed, supported, and protected the Prophet and the emigrants.\n"
+                "5. **Veterans of Badr and the Pledge of Ridwan (Bay'at al-Shajarah).**\n\n"
+                "📌 **Note on Quranic Mention:** Exactly one companion, **Zayd ibn Harithah (رضي الله عنه)**, is explicitly named by personal name in the Quran (Surah Al-Ahzab 33:37)."
             )
 
         if any(p in ql for p in ["surah without bismillah", "does not begin with bismillah", "doesn't start with bismillah"]):
@@ -1793,7 +1975,7 @@ class RAGKnowledge:
                 "and Ramadan special timings."
             )
 
-        if any(p in ql for p in ["quran module", "quran feature", "siratsync quran", "quran in siratsync", "open quran"]):
+        if any(p in ql for p in ["quran module", "quran feature", "siratsync quran", "quran in siratsync", "open quran module", "how to open quran in siratsync"]):
             return (
             "📖 **The Quran Module in SiratSync** is thoughtfully designed to offer a smooth, "
             "immersive, and spiritually enriching Quran experience.\n\n"
@@ -1808,7 +1990,7 @@ class RAGKnowledge:
             "comfort, and accessibility in one powerful experience."
         )
 
-        if any(p in ql for p in ["habit tracker", "habit streak", "siratsync habit", "track ibadah", "habit feature"]):
+        if any(p in ql for p in ["habit tracker module", "habit streak feature", "siratsync habit tracker", "track ibadah in app", "habit feature in siratsync"]):
             return (
                 "⭐ The Habit Tracker helps you build consistency in Salah, Quran "
                 "reading, Fasting, and Dhikr. Set daily goals, earn streaks, and view "
@@ -1832,7 +2014,7 @@ class RAGKnowledge:
                 "simple, organized, and meaningful."
             )
 
-        if any(p in ql for p in ["learn salah", "how to pray", "namaz guide", "prayer guide"]):
+        if any(p in ql for p in ["learn salah module", "learn salah feature", "where is learn salah", "how to open learn salah", "siratsync learn salah"]):
             return (
                 "🎯 SiratSync's Learn Salah module provides a step-by-step guide "
                 "covering actions, words, and meanings — perfect for beginners or "
@@ -1912,6 +2094,7 @@ class RAGKnowledge:
             "quran":        ["quran", "recitation", "tilawat", "surah", "ayat", "translation"],
             "dua":          ["dua", "supplication", "adhkar", "dhikr"],
             "hadith":       ["hadith", "bukhari", "muslim", "sunnah", "sahih"],
+            "sahaba":       ["sahaba", "sahabah", "sahabi", "companions", "ashab"],
             "productivity": ["habit", "consistent", "streak", "tracking", "istiqamah"],
             "developer":    ["kaiser", "developer", "who made", "founder"],
             "siratsync":    ["siratsync", "app", "features"],
@@ -1931,9 +2114,29 @@ class RAGKnowledge:
         if not query_words and not priority_cat:
             return ""
 
+        is_app_query = any(w in ql for w in ["siratsync", "app", "feature", "features", "developer", "kaiser", "version", "download", "settings", "troubleshoot", "module"])
+        app_meta_categories = {
+            "app_features", "app_info", "features", "settings_features",
+            "troubleshooting", "future_features", "app_versions", "download_links",
+            "quick_actions_navigation", "vision_and_mission", "developer", "responses",
+            "tasbih_features", "habit_tracking_features", "community_features",
+        }
+
         scored: list[tuple[float, str]] = []
 
+        is_sahaba_query = any(w in ql for w in ["sahaba", "sahabi", "sahabah", "companion", "companions", "ashab"])
+
         for item in self.search_index:
+            cat = item.get("category", "").lower()
+            if not is_app_query and (cat in app_meta_categories or "app" in cat or "feature" in cat):
+                continue
+
+            # Ensure queries about Prophet's companions/sahaba don't match app marketing descriptions
+            if is_sahaba_query and not is_app_query:
+                item_text = item.get("search_text", "")
+                if any(term in item_text for term in ["lifestyle companion", "spiritual companion", "app companion", "caring friend"]):
+                    continue
+
             matching = query_words & item["keywords"]
             topic_matched = False
             field_bonus = 0.0

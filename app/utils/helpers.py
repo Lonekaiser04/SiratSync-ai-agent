@@ -393,6 +393,7 @@ async def get_quick_response(
                 return rag_service._handle_similar_ayahs_query(ctx_sid, ctx_vid)
 
     BROAD_TOPIC_TRIGGERS = [
+            "sahaba", "sahabah", "sahabi", "sahabis", "companions", "ashab", "zayd",
             "verses about", "ayat about", "patience", "forgiveness", "charity",
             "prayer", "marriage", "parents", "death", "paradise", "judgment",
             "fasting", "honesty", "sabr", "tawakkul", "taqwa", "jannah", "jahannam",
@@ -423,9 +424,7 @@ async def get_quick_response(
             logger.info("⚡ Correction acknowledgment — no LLM")
             return (
                 "I apologize for the error. Could you please clarify what was wrong? "
-                "I want to make sure I give you accurate information. "
-                "For Quran-related questions, you can also check the Quran module "
-                "directly in the app for verified translations."
+                "I want to make sure I give you accurate, verified information."
             )
 
     CONFIRM = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "alright", "yes please"}
@@ -501,20 +500,20 @@ async def get_quick_response(
             "and more. All free, no ads! Built to help you stay consistent in your deen. 🌟"
         )
 
-    if intent == "salah" and "time" in message_lower:
+    if any(p in message_lower for p in ["check prayer times in app", "how to see prayer times in siratsync", "where are prayer times in the app", "set adhan notification"]):
         return (
             "You can check accurate prayer times in the Prayer section. "
             "Make sure location is enabled. Would you like help setting up Adhan notifications? 🕌"
         )
 
-    if intent == "quran" and any(w in message_lower for w in ["read", "how", "open"]):
+    if any(p in message_lower for p in ["open quran module", "open quran in siratsync", "how to open quran in the app", "read quran in siratsync"]):
         return (
             "Open the Quran module to read with Arabic text and translations "
             "(English, Kashmiri with Tafsir, Urdu). Adjust font size and themes "
             "for comfort. Works offline after download! 📖"
         )
 
-    if intent == "habit_related" and any(w in message_lower for w in ["track", "how", "start"]):
+    if any(p in message_lower for p in ["how to use habit tracker", "how to log habit in app", "start habit tracking in siratsync"]):
         if user_profile.get("consistency") == "struggling":
             return "Start with just ONE habit — track Fajr prayer daily. Small steps build big changes. Allah loves consistency! 💪"
         return (
@@ -530,7 +529,7 @@ async def get_quick_response(
             "May Allah bring peace to your heart. 🤲"
         )
 
-    if intent == "hadith" and "daily" in message_lower:
+    if intent == "hadith" and any(p in message_lower for p in ["enable daily hadith", "turn on daily hadith", "daily hadith notification", "daily hadith in app"]):
         return (
             "Enable Daily Hadith in Settings → Notifications. You'll receive an authentic "
             "hadith every morning from Sahih Bukhari or Muslim. 📚"
@@ -542,19 +541,19 @@ async def get_quick_response(
             "motion, then follow the arrow to Mecca. Works offline! 🧭"
         )
 
-    if intent == "ramadan" and any(p in message_lower for p in ["ramadan mode", "how to enable ramadan", "ramadan settings", "suhoor timing in app"]):
+    if intent == "ramadan" and any(p in message_lower for p in ["ramadan mode in app", "how to enable ramadan mode", "ramadan settings in app", "suhoor timing in app"]):
         return (
             "Enable Ramadan Mode for Suhoor/Iftar timings, special duas, and fasting "
             "reminders. May Allah bless your Ramadan! 🌙"
         )
 
-    if any(p in message_lower for p in ["siratsync offline", "app offline", "work offline", "works offline", "offline mode", "use offline"]):
+    if any(p in message_lower for p in ["siratsync offline", "app offline", "work offline", "works offline", "offline mode in siratsync", "use siratsync offline"]):
         return (
             "SiratSync works offline for Quran, Hadith, Duas, Qibla, and Tasbih. "
             "Download content once while online, then access anytime. Perfect for travel! 📴"
         )
 
-    if any(p in message_lower for p in ["learn salah", "how to pray", "namaz guide"]):
+    if any(p in message_lower for p in ["learn salah module", "siratsync learn salah", "where is learn salah in the app", "namaz guide in app"]):
         return (
             "Go to the Learn Salah module for a step-by-step guide with actions, words, "
             "and meanings. Perfect for beginners or anyone wanting to improve their prayer! 🎯"
