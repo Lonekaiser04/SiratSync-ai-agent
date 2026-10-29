@@ -27,6 +27,53 @@ logger = logging.getLogger(__name__)
 
 _rag_llm_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
+def is_time_or_non_verse_reference(text: str, match: Optional[re.Match] = None) -> bool:
+    """Returns True if a pattern like '2:30' in `text` is a time expression or non-verse context.
+    
+    Prevents queries like 'meeting at 2:30 pm', 'train at 3:15', 'aspect ratio 16:9'
+    from falsely resolving to Quran Surah:Ayah references.
+    """
+    if not text:
+        return False
+
+    t_lower = text.lower()
+    quranic_cues = (
+        "surah", "surat", "ayat", "ayah", "verse", "quran", "tafsir",
+        "tilawat", "recite", "recitation", "chapter", "revelation",
+        "translation", "meaning of", "bismillah"
+    )
+    if any(cue in t_lower for cue in quranic_cues):
+        return False
+
+    if match is None:
+        match = re.search(r'\b([1-9]|[1-9]\d|1[01]\d|114):([1-9]\d{0,2})\b', t_lower)
+        if not match:
+            return False
+
+    start, end = match.start(), match.end()
+    before = t_lower[:start].rstrip()
+    after = t_lower[end:].lstrip()
+
+    # Suffix: am, pm, a.m., p.m., o'clock, hrs, hours, est, pst, utc, gmt
+    if re.match(r'^(?:am|pm|a\.m\.|p\.m\.|o\'clock|hrs|hours|est|pst|cst|utc|gmt)\b', after):
+        return True
+
+    # Prefix: at 2:30, around 3:15, by 4:00, from 1:00, until 5:00
+    if re.search(r'\b(?:at|around|by|from|until|till|approx|approximately|meet(?:ing)?\s+at)\s*$', before):
+        return True
+
+    # Non-verse context cues (scheduling, appointments, clock, ratios, sports scores)
+    secular_cues = (
+        "meeting", "appointment", "schedule", "scheduled", "flight", "train", "bus",
+        "clock", "alarm", "call", "zoom", "lunch", "dinner", "breakfast", "tonight",
+        "tomorrow", "yesterday", "ratio", "score", "odds", "aspect", "dimension",
+        "pm", "am", "timezone", "time"
+    )
+    if any(re.search(rf'\b{re.escape(w)}\b', t_lower) for w in secular_cues):
+        return True
+
+    return False
+
 def get_features_response() -> str:
     return """✨ **SiratSync Key Features**:
 
@@ -203,7 +250,7 @@ async def get_quick_response(
         return followup
 
     verse_ref = re.search(r'\b([1-9]|[1-9]\d|1[01]\d|114):([1-9]\d{0,2})\b', message_lower)
-    if verse_ref:
+    if verse_ref and not is_time_or_non_verse_reference(message_lower, verse_ref):
         surah_id = int(verse_ref.group(1))
         verse_id = int(verse_ref.group(2))
         verse = rag_service.get_verse_by_reference(surah_id, verse_id)
@@ -427,7 +474,7 @@ async def get_quick_response(
     if intent == "farewell":
         return "JazakAllah khair for using SiratSync. May Allah keep you consistent. Come back anytime! 🤲"
 
-    if any(p in message_lower for p in ["what can you do", "help me", "how can you help"]):
+    if any(p in message_lower for p in ["what can you do", "help me with the app", "how can you help", "what are your capabilities"]):
         return (
             "I can help you with:\n\n"
             "📖 Reading Quran with translations\n"
@@ -489,19 +536,19 @@ async def get_quick_response(
             "hadith every morning from Sahih Bukhari or Muslim. 📚"
         )
 
-    if intent == "qibla":
+    if intent == "qibla" and any(p in message_lower for p in ["how to find qibla", "where is qibla", "which way is qibla", "qibla compass", "find qibla", "qibla direction"]):
         return (
             "Open Qibla Finder, calibrate your compass by moving the phone in a figure-8 "
             "motion, then follow the arrow to Mecca. Works offline! 🧭"
         )
 
-    if intent == "ramadan":
+    if intent == "ramadan" and any(p in message_lower for p in ["ramadan mode", "how to enable ramadan", "ramadan settings", "suhoor timing in app"]):
         return (
             "Enable Ramadan Mode for Suhoor/Iftar timings, special duas, and fasting "
             "reminders. May Allah bless your Ramadan! 🌙"
         )
 
-    if "offline" in message_lower:
+    if any(p in message_lower for p in ["siratsync offline", "app offline", "work offline", "works offline", "offline mode", "use offline"]):
         return (
             "SiratSync works offline for Quran, Hadith, Duas, Qibla, and Tasbih. "
             "Download content once while online, then access anytime. Perfect for travel! 📴"
@@ -513,13 +560,13 @@ async def get_quick_response(
             "and meanings. Perfect for beginners or anyone wanting to improve their prayer! 🎯"
         )
 
-    if "community" in message_lower:
+    if any(p in message_lower for p in ["siratsync community", "app community", "join the community", "community tab", "community feature"]):
         return (
             "Join our peaceful Islamic community! Share reminders, follow others, and get "
             "inspiration. All content is moderated for safety and proper adab. 👥"
         )
 
-    if intent == "app_features_inquiry" or "features" in message_lower:
+    if intent == "app_features_inquiry" or any(p in message_lower for p in ["app features", "siratsync features", "features of this app", "features of siratsync", "what features do you have", "what features does the app have"]):
         return get_features_response()
 
     return None

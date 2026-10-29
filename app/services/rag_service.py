@@ -395,7 +395,7 @@ class RAGKnowledge:
         for faq_key in ("faqs", "faqs_new"):
             for faq in self.knowledge.get(faq_key, []):
                 fq = faq.get("question", "").lower()
-                if fq in ql or ql in fq:
+                if fq and (fq in ql or (len(ql) > 15 and fq == ql)):
                     return f"❓ {faq['answer']}"
 
         return self._keyword_fallback(ql, top_k)
@@ -1091,7 +1091,7 @@ class RAGKnowledge:
             "quranic guidance", "quran on", "islam on",
             "kashmiri translation", "urdu translation",
             "show me in urdu", "show me in kashmiri",
-            "rights of", "rights for", "rights in islam",
+            "rights in islam", "rights in quran",
         ]
         if any(t in ql for t in EXPLICIT):
             return True
@@ -1113,9 +1113,9 @@ class RAGKnowledge:
         ]
         CTX = [
             "in islam", "in quran", "islamic", "allah says",
-            "quran", "allah", "prophet", "according to",
+            "quran", "allah", "prophet",
             "surah", "verse", "ayat", "ayah",
-            "rights", "ruling", "hukum", "fatwa",
+            "ruling", "hukum", "fatwa",
             "halal", "haram", "permissible", "forbidden",
             "muslim", "muslims", "believers", "ummah",
         ]
@@ -1123,15 +1123,49 @@ class RAGKnowledge:
         has_topic = any(t in ql for t in TOPICS)
         has_context = any(c in ql for c in CTX) or any(e in ql for e in EXPLICIT)
         
-        if re.search(r'rights?\s+of\s+\w+', ql):
+        # Only treat 'rights of' as a Quran topic query if asking about Islamic subjects or with Islamic context
+        if re.search(r'rights?\s+(?:of|for)\s+(?:parents|women|wives|wife|husbands|husband|neighbors|orphans|children|spouses|spouse|relatives|non-?muslims|believers)', ql):
+            return True
+        if "rights of" in ql and (has_context or "islam" in ql or "quran" in ql):
             return True
             
         return has_topic and has_context
 
     @staticmethod
-    def _extract_verse_ref(ql: str) -> Optional[tuple[int, int]]:
+    def _is_time_expression(ql: str, match: re.Match) -> bool:
+        quranic_cues = (
+            "surah", "surat", "ayat", "ayah", "verse", "quran", "tafsir",
+            "tilawat", "recite", "recitation", "chapter", "revelation",
+            "translation", "meaning of", "bismillah"
+        )
+        if any(cue in ql for cue in quranic_cues):
+            return False
+
+        start, end = match.start(), match.end()
+        before = ql[:start].rstrip()
+        after = ql[end:].lstrip()
+
+        if re.match(r'^(?:am|pm|a\.m\.|p\.m\.|o\'clock|hrs|hours|est|pst|cst|utc|gmt)\b', after):
+            return True
+
+        if re.search(r'\b(?:at|around|by|from|until|till|approx|approximately|meet(?:ing)?\s+at)\s*$', before):
+            return True
+
+        secular_cues = (
+            "meeting", "appointment", "schedule", "scheduled", "flight", "train", "bus",
+            "clock", "alarm", "call", "zoom", "lunch", "dinner", "breakfast", "tonight",
+            "tomorrow", "yesterday", "ratio", "score", "odds", "aspect", "dimension",
+            "pm", "am", "timezone", "time"
+        )
+        if any(re.search(rf'\b{re.escape(w)}\b', ql) for w in secular_cues):
+            return True
+
+        return False
+
+    @classmethod
+    def _extract_verse_ref(cls, ql: str) -> Optional[tuple[int, int]]:
         m = re.search(r"\b([1-9]|[1-9]\d|1[01]\d|114):([1-9]\d{0,2})\b", ql)
-        if m:
+        if m and not cls._is_time_expression(ql, m):
             return int(m.group(1)), int(m.group(2))
         m2 = re.search(
             r"(?:surah|chapter)\s+(\d{1,3})\s+(?:verse|ayat|ayah)\s+(\d{1,3})", ql
@@ -1725,8 +1759,8 @@ class RAGKnowledge:
             )
 
         if any(p in ql for p in [
-            "siratsync features", "app features", "what can it do", "what can you do",
-            "what are the features", "features of siratsync", "features", "list features", "what features"
+            "siratsync features", "app features", "what can siratsync do", "what can the app do",
+            "what are the app features", "what are the features", "features of siratsync", "features of this app", "list app features"
         ]):
             return (
                 "✨ **SiratSync Features:**\n"
@@ -1748,7 +1782,10 @@ class RAGKnowledge:
                 "📴 Offline support (Quran, Hadith, Duas, Qibla, Tasbih)"
             )
 
-        if "prayer time" in ql or "salah time" in ql or "namaz time" in ql:
+        if any(p in ql for p in [
+            "prayer times in siratsync", "how does prayer time work in siratsync",
+            "prayer time calculations in app", "app prayer times", "siratsync prayer times"
+        ]):
             return (
                 "🕌 SiratSync provides accurate prayer times based on your location. "
                 "Supports multiple calculation methods (MWL, ISNA, Egypt, Makkah) "
@@ -1841,7 +1878,7 @@ class RAGKnowledge:
                 "uninterrupted wherever you are."
             )
 
-        if "qibla" in ql or "kibla" in ql:
+        if any(p in ql for p in ["qibla finder in app", "how does qibla work in siratsync", "how to use qibla finder", "calibrate qibla compass", "compass to mecca in app", "find qibla in siratsync"]):
             return (
                 "🧭 The Qibla Finder provides high-accuracy compass direction to Mecca. "
                 "Calibrate by moving your phone in a figure-8 motion, then follow the "
@@ -1898,14 +1935,24 @@ class RAGKnowledge:
 
         for item in self.search_index:
             matching = query_words & item["keywords"]
-            score = float(len(matching)) * 2.0
-            if priority_cat and priority_cat in item["category"].lower():
-                score += 15
+            topic_matched = False
+            field_bonus = 0.0
             if isinstance(item["item"], dict):
                 for field in ("topic", "situation", "intent_name"):
                     val = item["item"].get(field, "").lower()
                     if val and val in ql:
-                        score += 8
+                        field_bonus += 8.0
+                        topic_matched = True
+
+            # If neither query keywords nor specific topic matched, skip this item entirely
+            if not matching and not topic_matched:
+                continue
+
+            score = float(len(matching)) * 2.0 + field_bonus
+            # Only boost category priority if there is an actual keyword/topic match in this item
+            if priority_cat and priority_cat in item["category"].lower():
+                score += 10.0
+
             if score < 4.0:
                 continue
 

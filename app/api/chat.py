@@ -27,7 +27,7 @@ from app.services.llm_service import LLMStreamChunk, llm_service
 from app.services.memory_service import memory
 from app.services.rag_service import rag_service
 from app.utils.cache import cache
-from app.utils.helpers import get_quick_response
+from app.utils.helpers import get_quick_response, is_time_or_non_verse_reference
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,11 @@ def _is_verse_or_surah_query(message_lower: str) -> bool:
     stripped = message_lower.strip()
     for i, pattern in enumerate(_VERSE_OR_SURAH_PATTERNS):
         target = stripped if i == len(_VERSE_OR_SURAH_PATTERNS) - 1 else message_lower
-        if pattern.search(target):
+        match = pattern.search(target)
+        if match:
+            # If pattern is \b...:...\b like '2:30', ensure it's not a clock time or secular ratio
+            if ":" in match.group(0) and is_time_or_non_verse_reference(message_lower, match):
+                continue
             return True
     return False
 
