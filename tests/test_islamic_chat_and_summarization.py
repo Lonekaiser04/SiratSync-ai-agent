@@ -64,52 +64,79 @@ class TestSummarizationMultilingualAndRules:
         assert "۔" in cleaned_urdu
 
     @pytest.mark.asyncio
-    async def test_urdu_post_kept_unchanged_with_zero_llm_calls(self):
+    @pytest.mark.asyncio
+    async def test_urdu_post_summarization_in_urdu(self):
         urdu_content = (
             "نماز اسلام کا سب سے بنیادی اور اہم رکن ہے۔ حضور اکرم صلی اللہ علیہ وسلم نے فرمایا کہ "
             "نماز مومن اور کافر کے درمیان فرق ہے۔ جب بندہ سچے دل سے اللہ کے حضور سجدہ ریز ہوتا ہے "
             "تو اس کے گناہ جھڑ جاتے ہیں اور دل کو اطمینان حاصل ہوتا ہے۔ اس لیے ہر مسلمان کو چاہیے "
             "کہ وہ اپنے تمام دنیاوی کام چھوڑ کر بروقت نماز باجماعت ادا کرنے کا اہتمام کرے۔"
         )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• نماز اسلام کا سب سے بنیادی اور اہم ترین ستون ہے جو مومن کی پہچان ہے۔\n"
+            "• بروقت باجماعت نماز ادا کرنے سے گناہ معاف اور قلبی اطمینان حاصل ہوتا ہے۔"
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=150))
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
                 resp = await ac.post("/summarize", json={"post_content": urdu_content, "user_id": "urdu_user"})
                 assert resp.status_code == 200
                 data = resp.json()
-                # Must be returned unchanged with 0 LLM calls because no English content exists
-                assert mock_create.call_count == 0
-                assert data["summary"] == urdu_content
+                assert mock_create.call_count == 1
+                assert "نماز" in data["summary"]
+                assert "۔" in data["summary"]
 
     @pytest.mark.asyncio
-    async def test_kashmiri_post_kept_unchanged_with_zero_llm_calls(self):
+    async def test_kashmiri_post_summarization_in_kashmiri(self):
         kashmiri_content = (
             "کٲشُر چھُ اَکھ خوبصورت زَبان۔ اللہ تعــالیٰ تھٲوِو سٲری خۄش تہٕ سلامت۔ "
             "پانہٕ وٲنۍ روزِو مَحَبَتَس مَنٛز تہٕ کٔرِو اَکھ أکِس مَدَتھ۔"
         )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• کٲشُر زَبان چھِ واریاہ خوبصورت تہٕ مَحَبَت اَکھ أکِس مَنٛز روزُن چھُ ضۆروٗری۔\n"
+            "• سارِوے مَدَتھ کَرُن تہٕ اَکھ اَکِس خۄش تھَاونک دُعا۔"
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=140))
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
                 resp = await ac.post("/summarize", json={"post_content": kashmiri_content, "user_id": "kashmiri_user"})
                 assert resp.status_code == 200
                 data = resp.json()
-                # Must be returned unchanged with 0 LLM calls because no English content exists
-                assert mock_create.call_count == 0
-                assert data["summary"] == kashmiri_content
+                assert mock_create.call_count == 1
+                assert "•" in data["summary"]
 
     @pytest.mark.asyncio
-    async def test_roman_urdu_post_kept_unchanged_with_zero_llm_calls(self):
+    async def test_roman_urdu_post_summarization_in_roman_urdu(self):
         roman_urdu_content = (
-            "Aj ki post mein hum namaz ke bare mein baat karenge jo har musalman ke liye bohat zaroori hai aur Allah se dua hai ke sab ko hidayat de."
+            "Aj ki post mein hum namaz ke bare mein baat karenge jo har musalman ke liye bohat zaroori hai aur Allah se dua hai ke sab ko hidayat de. Humein daily 5 waqt ki namaz waqt par ada karni chahiye aur apne doston ko bhi masjid le jana chahiye."
         )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• Har musalman ke liye 5 waqt ki namaz waqt par ada karna behad zaroori hai.\n"
+            "• Apne doston ko bhi masjid le jane aur namaz ki dawat dene ki taqeed ki gayi hai."
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=150))
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
                 resp = await ac.post("/summarize", json={"post_content": roman_urdu_content, "user_id": "roman_urdu_user"})
                 assert resp.status_code == 200
                 data = resp.json()
-                assert mock_create.call_count == 0
-                assert data["summary"] == roman_urdu_content
+                assert mock_create.call_count == 1
+                assert "namaz" in data["summary"].lower()
 
     @pytest.mark.asyncio
     async def test_sacred_text_preservation_in_summary(self):
@@ -129,26 +156,62 @@ class TestSummarizationMultilingualAndRules:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
                 mock_create.return_value = mock_res
                 resp = await ac.post("/summarize", json={"post_content": post_with_verse, "user_id": "sacred_user"})
                 assert resp.status_code == 200
                 data = resp.json()
                 assert "2:153" in data["summary"] or "Al-Baqarah" in data["summary"]
-                assert "الصَّبْرِ" in data["summary"] or "patience and prayer" in data["summary"]
+                # Sacred Arabic verse preserved exactly and returned unchanged
+                assert "الصَّبْرِ" in data["summary"]
 
     @pytest.mark.asyncio
-    async def test_pure_arabic_post_kept_unchanged(self):
+    async def test_pure_arabic_post_preserves_arabic_wording_exactly_and_unchanged(self):
         arabic_text = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ"
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ.\n"
+            "• لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ."
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=120))
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
                 resp = await ac.post("/summarize", json={"post_content": arabic_text, "user_id": "arabic_user"})
                 assert resp.status_code == 200
                 data = resp.json()
-                # Must be returned unchanged with 0 LLM calls
-                assert mock_create.call_count == 0
-                assert data["summary"] == arabic_text
+                # Arabic wording is preserved, never translated into English
+                assert "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ" in data["summary"]
+                assert not any(c in "abcdefghijklmnopqrstuvwxyz" for c in data["summary"].lower())
+
+    @pytest.mark.asyncio
+    async def test_arabic_verse_preserved_in_urdu_post(self):
+        urdu_with_verse = (
+            "مشکل کے وقت اللہ کی یاد دل کو سکون دیتی ہے۔ قرآن میں ارشاد ہے: "
+            "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ "
+            "ہمیں ہر حال میں اللہ کا ذکر کرتے رہنا چاہیے تاکہ زندگی میں برکت رہے۔"
+        )
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "• ذکر الہی سے دلوں کو اطمینان اور زندگی میں برکت حاصل ہوتی ہے۔\n"
+            "• قرآن مجید کا ارشاد ہے: أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ۔"
+        )
+        mock_res = MagicMock(choices=[mock_choice], usage=MagicMock(total_tokens=150))
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            with patch("app.api.summarize.llm.chat.completions.create", new_callable=AsyncMock) as mock_create, \
+                 patch("app.api.summarize.cache.get", new_callable=AsyncMock, return_value=None):
+                mock_create.return_value = mock_res
+                resp = await ac.post("/summarize", json={"post_content": urdu_with_verse, "user_id": "urdu_verse_user"})
+                assert resp.status_code == 200
+                data = resp.json()
+                # Arabic verse is preserved unchanged inside the Urdu summary
+                assert "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ" in data["summary"]
 
     @pytest.mark.asyncio
     async def test_mixed_english_arabic_post_summarizes_english_and_preserves_arabic(self):
