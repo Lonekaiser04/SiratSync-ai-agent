@@ -24,6 +24,7 @@ from app.api.health import router as health_router
 from app.api.summarize import router as summarize_router
 from app.api.user import router as user_router
 from app.api.whatsapp import router as whatsapp_router
+from app.api.sponsorship import router as sponsorship_router
 from app.core.config import settings
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.request_logger import log_requests_middleware
@@ -97,6 +98,7 @@ app.include_router(health_router)
 app.include_router(user_router)
 app.include_router(summarize_router)
 app.include_router(whatsapp_router)
+app.include_router(sponsorship_router)
 
 
 if __name__ == "__main__":

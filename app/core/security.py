@@ -35,8 +35,9 @@ async def require_internal_api_key(x_api_key: str | None = Header(default=None))
         )
 
 
-# ── Firebase Authentication ──────────────────────────────────────────────
+# ── Firebase Authentication & Firestore ────────────────────────────────────
 _firebase_app = None
+_firestore_client = None
 
 
 def get_firebase_app():
@@ -72,11 +73,27 @@ def get_firebase_app():
     return _firebase_app
 
 
-def verify_firebase_token(auth_header: str | None) -> str | None:
-    """
-    Verifies a Firebase ID token from the 'Authorization: Bearer <token>' header.
-    Returns the verified uid if valid, None otherwise.
-    """
+def get_firestore_client():
+    """Privileged Firebase Admin Firestore client for backend operations."""
+    global _firestore_client
+    if _firestore_client is not None:
+        return _firestore_client
+
+    app = get_firebase_app()
+    if not app:
+        return None
+
+    try:
+        from firebase_admin import firestore
+        _firestore_client = firestore.client(app=app)
+        return _firestore_client
+    except Exception as e:
+        logger.warning("Could not initialize Firestore client: %s", e)
+        return None
+
+
+def get_token_claims(auth_header: str | None) -> dict | None:
+    """Verifies Firebase ID token and returns decoded claims dictionary."""
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
 
@@ -90,11 +107,81 @@ def verify_firebase_token(auth_header: str | None) -> str | None:
 
     try:
         from firebase_admin import auth as firebase_auth
-        decoded = firebase_auth.verify_id_token(token, app=app)
-        return decoded.get("uid")
+        return firebase_auth.verify_id_token(token, app=app)
     except Exception as e:
         logger.debug("Firebase token verification failed: %s", e)
         return None
+
+
+def verify_firebase_token(auth_header: str | None) -> str | None:
+    """
+    Verifies a Firebase ID token from the 'Authorization: Bearer <token>' header.
+    Returns the verified uid if valid, None otherwise.
+    """
+    claims = get_token_claims(auth_header)
+    return claims.get("uid") if claims else None
+
+
+def is_admin_user(uid: str, claims: dict | None = None) -> bool:
+    """
+    Checks if a given user UID has administrative privileges via:
+    1. Firebase Auth custom claim (admin == True)
+    2. Firestore adminusers/{uid} document
+    3. Firestore users/{uid}.isAdmin == True
+    """
+    if not uid:
+        return False
+
+    if claims and claims.get("admin") is True:
+        return True
+
+    db = get_firestore_client()
+    if not db:
+        return False
+
+    try:
+        admin_doc = db.collection("adminusers").document(uid).get()
+        if admin_doc.exists and admin_doc.to_dict().get("isAdmin") is True:
+            return True
+
+        user_doc = db.collection("users").document(uid).get()
+        if user_doc.exists and user_doc.to_dict().get("isAdmin") is True:
+            return True
+    except Exception as e:
+        logger.warning("Error checking admin status for user %s: %s", uid, e)
+
+    return False
+
+
+async def require_admin_auth(
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
+) -> dict:
+    """
+    FastAPI dependency enforcing admin authentication via either:
+    1. Constant-time comparison with INTERNAL_API_KEY
+    2. Verified Firebase Auth ID token possessing admin custom claim or admin database record
+    """
+    # 1. API Key bypass for trusted internal calls
+    if x_api_key and settings.INTERNAL_API_KEY and hmac.compare_digest(x_api_key, settings.INTERNAL_API_KEY):
+        return {"uid": "internal_admin", "is_admin": True, "auth_type": "api_key"}
+
+    # 2. Firebase ID token check
+    claims = get_token_claims(authorization)
+    if not claims:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authentication credentials.",
+        )
+
+    uid = claims.get("uid")
+    if not uid or not is_admin_user(uid, claims):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required.",
+        )
+
+    return {"uid": uid, "is_admin": True, "claims": claims, "auth_type": "firebase_token"}
 
 
 # ── Client IP Resolution (Reverse Proxy Safe) ─────────────────────────────
